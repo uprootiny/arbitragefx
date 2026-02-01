@@ -183,6 +183,54 @@ src/bin/engine_loop.rs:177: // TODO: implement cancel all
 
 ---
 
+## 24 Engineering Snags
+
+### Critical (can lose money)
+
+| # | Issue | Status | Details |
+|---|-------|--------|---------|
+| 1 | **WAL recovery overwrote strategies** | ✅ Fixed | Single `last_snapshot` meant last strategy's snapshot applied to all. Now `snapshots_by_strategy` HashMap. |
+| 2 | **Backtest pending orders shared** | ✅ Fixed | All strategies filled each other's orders. Added `strategy_idx` on PendingOrder. |
+| 3 | **Risk engine ignored unrealized loss** | ✅ Fixed | Only checked realized PnL. Added MTM calculation with current price. |
+| 4 | **Close blocked by halt/cooldown** | ✅ Fixed | Couldn't unwind positions when halted. Now allows Close through all guards. |
+| 5 | **Trading on missing aux data** | ✅ Fixed | `funding_rate=0.0` treated as signal. Added `has_funding` flags. |
+| 6 | **Client ID collisions** | ✅ Fixed | `CID-{ts}` reused for concurrent orders. Now `CID-{strategy}-{ts}-{seq}`. |
+
+### High (wrong results)
+
+| # | Issue | Status | Details |
+|---|-------|--------|---------|
+| 7 | **Entry price always overwritten** | ✅ Fixed | Every fill replaced entry_price. Now weighted average. |
+| 8 | **Backtest left positions open** | ✅ Fixed | No forced close at end. Added force close at last bar. |
+| 9 | **Exposure check division by zero** | ✅ Fixed | Divided by `equity.abs()` when zero. Added `.max(1.0)`. |
+| 10 | **Aux defaults silently zero** | ✅ Fixed | depeg=0.0 meant "no depeg" not "unknown". Added `has_depeg`. |
+| 11 | **Strategies used liq score unchecked** | ✅ Fixed | Zero score = "no data". Added `has_liquidations` check. |
+
+### Medium (brittle behavior)
+
+| # | Issue | Status | Details |
+|---|-------|--------|---------|
+| 12 | **Two `StrategyState` types** | ⚠️ Open | strategy.rs:104 vs engine/state.rs:534 |
+| 13 | **Two `MarketView` types** | ⚠️ Open | Same issue, different fields |
+| 14 | **Cancel TODOs with no Exchange support** | ⚠️ Open | Dead code that looks active |
+| 15 | **46 unwrap() calls** | ⚠️ Open | Scattered panic points in non-test code |
+| 16 | **main.rs at 570 LOC** | ⚠️ Open | Mixes execution + strategy + logging |
+| 17 | **No tests for state.rs (588 LOC)** | ⚠️ Open | Core strategies completely untested |
+| 18 | **No tests for backtest.rs** | ⚠️ Open | Validation path untested |
+| 19 | **ProfileScope uses rand::random()** | ⚠️ Open | Adds dependency for sampling |
+| 20 | **Fill channel bounded at 256** | ⚠️ Open | Could block sender under burst |
+
+### Low (code quality)
+
+| # | Issue | Status | Details |
+|---|-------|--------|---------|
+| 21 | **Retry helpers unused** | ⚠️ Open | `is_retryable_http_error` never called |
+| 22 | **Order SM variants unused** | ⚠️ Open | `CancelRequest`, `Reject`, `Timeout` never constructed |
+| 23 | **`in_profit` variable unused** | ⚠️ Open | policy.rs:436 |
+| 24 | **Inconsistent error handling** | ⚠️ Open | Mix of `?`, `unwrap_or_default()`, panic |
+
+---
+
 ## Verdict
 
 **Ready for paper trading**: Yes
@@ -190,3 +238,6 @@ src/bin/engine_loop.rs:177: // TODO: implement cancel all
 **Ready for production**: No - needs state.rs tests, backtest.rs tests, type consolidation
 
 The ethical framework (Three Poisons, Eightfold Path) is well-implemented and provides meaningful constraints. The live fill reconciliation path is solid. Main gaps are test coverage for core components and structural cleanup.
+
+**Fixed this session**: 11 critical/high issues
+**Remaining**: 13 medium/low issues
