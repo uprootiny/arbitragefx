@@ -12,7 +12,7 @@ mod verify;
 
 use anyhow::Result;
 use chrono::Utc;
-use logging::{json_log, obj, params_hash, v_num, v_str};
+use logging::{json_log, obj, params_hash, v_num, v_str, ProfileScope};
 use serde_json::json;
 use reliability::{circuit::CircuitBreaker, state::OrderBook, wal::Wal};
 use adapter::unified::UnifiedAdapter;
@@ -27,6 +27,8 @@ use state::{MarketState, StrategyInstance};
 use storage::StateStore;
 use strategy::{Action, Strategy};
 use tokio::time::{sleep, Duration};
+use tokio::sync::mpsc;
+use std::collections::HashMap;
 
 fn now_ts() -> u64 {
     Utc::now().timestamp() as u64
@@ -41,6 +43,7 @@ async fn main() -> Result<()> {
     store.init()?;
     let mut wal = Wal::open(&cfg.wal_path)?;
     let mut order_book = OrderBook::new();
+    let mut pending_by_client: HashMap<String, String> = HashMap::new();
     let mut circuit = CircuitBreaker::new(5);
     let aux_fetcher = AuxDataFetcher::new();
 
@@ -119,11 +122,98 @@ async fn main() -> Result<()> {
     let mut risk = RiskEngine::new(cfg.clone());
     let mut metrics = MetricsEngine::new();
     let retry_cfg = RetryConfig::default();
+    let (fill_tx, mut fill_rx) = mpsc::channel(256);
+    if live_adapter {
+        if let (Some(key), Some(secret)) = (&cfg.api_key, &cfg.api_secret) {
+            let base = cfg.binance_base.clone();
+            let symbol = cfg.symbol.clone();
+            let ws_key = key.clone();
+            let ws_base = base.clone();
+            let ws_tx = fill_tx.clone();
+            tokio::spawn(async move {
+                let _ = feed::binance_live::start_ws_listener(ws_key, ws_base, ws_tx).await;
+            });
+
+            let poll_tx = fill_tx.clone();
+            let poll_key = key.clone();
+            let poll_secret = secret.clone();
+            tokio::spawn(async move {
+                let _ = feed::binance_live::start_poll_fallback(
+                    poll_key,
+                    poll_secret,
+                    base,
+                    symbol,
+                    poll_tx,
+                    std::env::var("POLL_SECS").ok().and_then(|v| v.parse().ok()).unwrap_or(15),
+                ).await;
+            });
+        }
+    }
 
     loop {
         let start = now_ts();
 
+        let _loop_prof = ProfileScope::new("profile", "main_loop");
+
+        while let Ok(fill) = fill_rx.try_recv() {
+            let _fill_prof = ProfileScope::new("profile", "fill_apply");
+            if let Some(strategy_id) = pending_by_client.get(&fill.client_id).cloned() {
+                if let Some(inst) = strategies.iter_mut().find(|s| s.id == strategy_id) {
+                    if let Ok((prev, next)) = order_book.apply(
+                        &fill.client_id,
+                        crate::verify::order_sm::Event::Fill {
+                            fill_id: fill.fill_id.clone(),
+                            qty: fill.qty,
+                            price: fill.price,
+                        },
+                    ) {
+                        json_log(
+                            "order_state",
+                            obj(&[
+                                ("order_id", v_str(&fill.client_id)),
+                                ("prev_state", v_str(&format!("{:?}", prev))),
+                                ("new_state", v_str(&format!("{:?}", next))),
+                                ("fill_qty", v_num(fill.qty)),
+                                ("price", v_num(fill.price)),
+                                ("source", v_str("live_fill")),
+                            ]),
+                        );
+                        if next == crate::verify::order_sm::OrderState::Filled {
+                            pending_by_client.remove(&fill.client_id);
+                        }
+                    }
+
+                    let signed_qty = if fill.side == "BUY" { fill.qty } else { -fill.qty };
+                    let realized = inst.state.portfolio.apply_fill(state::Fill {
+                        price: fill.price,
+                        qty: signed_qty,
+                        fee: fill.fee,
+                        ts: fill.ts,
+                    });
+                    inst.state.metrics.pnl += realized;
+                    if realized > 0.0 {
+                        inst.state.metrics.wins += 1;
+                        circuit.record_success();
+                    } else if realized < 0.0 {
+                        inst.state.metrics.losses += 1;
+                        inst.state.last_loss_ts = fill.ts;
+                        circuit.record_failure();
+                    } else {
+                        circuit.record_success();
+                    }
+                    inst.state.last_trade_ts = fill.ts;
+                    let day = fill.ts / 86_400;
+                    if inst.state.trade_day != day {
+                        inst.state.trade_day = day;
+                        inst.state.trades_today = 0;
+                    }
+                    inst.state.trades_today += 1;
+                }
+            }
+        }
+
         // Fetch candle with retry
+        let _candle_prof = ProfileScope::new("profile", "fetch_candle");
         let candle = retry_async(&retry_cfg, "fetch_candle", || {
             exchange.fetch_latest_candle(&cfg.symbol, cfg.candle_granularity)
         }).await?;
@@ -131,10 +221,12 @@ async fn main() -> Result<()> {
         market.on_candle(candle);
 
         // Fetch comprehensive auxiliary data (funding, borrow, liquidations, depeg)
+        let _aux_prof = ProfileScope::new("profile", "fetch_aux");
         let aux = aux_fetcher.fetch(&cfg.symbol).await.unwrap_or_default();
         market.update_aux(&cfg.symbol, aux);
 
         // Update liquidation rolling window
+        let _liq_prof = ProfileScope::new("profile", "fetch_liquidations");
         let _ = aux_fetcher.fetch_recent_liquidations(&cfg.symbol).await;
 
         let view = market.view(&cfg.symbol);
@@ -150,6 +242,17 @@ async fn main() -> Result<()> {
 
         for inst in strategies.iter_mut() {
             let view = market.view(&cfg.symbol);
+            if view.last.ts == 0 {
+                json_log(
+                    "risk_guard",
+                    obj(&[
+                        ("check", v_str("market_data_missing")),
+                        ("result", v_str("fail")),
+                        ("strategy", v_str(&inst.id)),
+                    ]),
+                );
+                continue;
+            }
             if !view.aux.is_valid_for_trading(start, cfg.candle_granularity.saturating_mul(2)) {
                 json_log(
                     "risk_guard",
@@ -161,8 +264,18 @@ async fn main() -> Result<()> {
                 );
                 continue;
             }
+            let _strategy_prof = ProfileScope::with_context(
+                "profile",
+                "strategy_update",
+                &[("strategy", v_str(&inst.id))],
+            );
             let action = inst.strategy.update(view, &mut inst.state);
             // FIXED: Use current price for MTM risk calculations
+            let _risk_prof = ProfileScope::with_context(
+                "profile",
+                "risk_apply",
+                &[("strategy", v_str(&inst.id))],
+            );
             let guarded = risk.apply_with_price(&inst.state, action, start, view.last.c);
             json_log(
                 "strategy",
@@ -205,6 +318,7 @@ async fn main() -> Result<()> {
                     );
                     continue;
                 }
+                let _order_prof = ProfileScope::new("profile", "place_order");
                 inst.state.order_seq = inst.state.order_seq.saturating_add(1);
                 // FIXED: Include strategy_id + sequence to avoid collisions across strategies
                 let intent_id = format!("I-{}-{}-{}", inst.id, start, inst.state.order_seq);
@@ -215,7 +329,19 @@ async fn main() -> Result<()> {
                     Action::Close => inst.state.portfolio.position.abs(),
                     Action::Hold => 0.0,
                 };
+                if order_qty <= 0.0 {
+                    json_log(
+                        "risk_guard",
+                        obj(&[
+                            ("check", v_str("order_qty_zero")),
+                            ("result", v_str("fail")),
+                            ("strategy", v_str(&inst.id)),
+                        ]),
+                    );
+                    continue;
+                }
                 order_book.ensure(&client_id, order_qty);
+                pending_by_client.insert(client_id.clone(), inst.id.clone());
                 if let Ok((prev, next)) =
                     order_book.apply(&client_id, crate::verify::order_sm::Event::Submit)
                 {
@@ -273,30 +399,50 @@ async fn main() -> Result<()> {
                     qty: order_qty,
                     client_id: client_id.clone(),
                 });
-                if let Ok(resp) = resp {
-                    if let Ok((prev, next)) = order_book.apply(
-                        &client_id,
-                        crate::verify::order_sm::Event::Ack { order_id: resp.order_id.clone() },
-                    ) {
+                match resp {
+                    Ok(resp) => {
+                        if let Ok((prev, next)) = order_book.apply(
+                            &client_id,
+                            crate::verify::order_sm::Event::Ack { order_id: resp.order_id.clone() },
+                        ) {
+                            json_log(
+                                "order_state",
+                                obj(&[
+                                    ("order_id", v_str(&client_id)),
+                                    ("prev_state", v_str(&format!("{:?}", prev))),
+                                    ("new_state", v_str(&format!("{:?}", next))),
+                                    ("evidence", v_str("api_ack")),
+                                ]),
+                            );
+                        }
                         json_log(
-                            "order_state",
+                            "exec_wrapper",
                             obj(&[
-                                ("order_id", v_str(&client_id)),
-                                ("prev_state", v_str(&format!("{:?}", prev))),
-                                ("new_state", v_str(&format!("{:?}", next))),
-                                ("evidence", v_str("api_ack")),
+                                ("intent_id", v_str(&intent_id)),
+                                ("client_order_id", v_str(&client_id)),
+                                ("status", v_str("response")),
+                                ("order_id", v_str(&resp.order_id)),
                             ]),
                         );
                     }
-                    json_log(
-                        "exec_wrapper",
-                        obj(&[
-                            ("intent_id", v_str(&intent_id)),
-                            ("client_order_id", v_str(&client_id)),
-                            ("status", v_str("response")),
-                            ("order_id", v_str(&resp.order_id)),
-                        ]),
-                    );
+                    Err(err) => {
+                        let _ = order_book.apply(
+                            &client_id,
+                            crate::verify::order_sm::Event::Reject { reason: err.clone() },
+                        );
+                        pending_by_client.remove(&client_id);
+                        circuit.record_failure();
+                        json_log(
+                            "exec_wrapper",
+                            obj(&[
+                                ("intent_id", v_str(&intent_id)),
+                                ("client_order_id", v_str(&client_id)),
+                                ("status", v_str("error")),
+                                ("error", v_str(&err)),
+                            ]),
+                        );
+                        continue;
+                    }
                 }
 
                 if live_adapter {
@@ -312,6 +458,7 @@ async fn main() -> Result<()> {
                 }
 
                 // Execute with retry (paper execution path only)
+                let _exec_prof = ProfileScope::new("profile", "execute_order");
                 let fill = retry_async(&retry_cfg, "execute_order", || {
                     exchange.execute(&cfg.symbol, guarded, &inst.state)
                 }).await?;
@@ -400,6 +547,7 @@ async fn main() -> Result<()> {
         }
 
         if start % (cfg.persist_every_secs) == 0 {
+            let _persist_prof = ProfileScope::new("profile", "persist_snapshot");
             store.persist_snapshot(start, &strategies)?;
             // Write WAL snapshot for each strategy
             for inst in strategies.iter() {

@@ -134,16 +134,37 @@ impl PortfolioState {
         }
         let mut realized = 0.0;
         let prev_pos = self.position;
-        let closing = prev_pos != 0.0 && (prev_pos + fill.qty).abs() < prev_pos.abs();
-        if closing {
-            let close_qty = fill.qty.abs().min(prev_pos.abs());
+        let new_pos = prev_pos + fill.qty;
+
+        // Realized PnL on the portion that closes existing position
+        if prev_pos != 0.0 && prev_pos.signum() != fill.qty.signum() {
+            let close_qty = prev_pos.abs().min(fill.qty.abs());
             let dir = if prev_pos > 0.0 { 1.0 } else { -1.0 };
             realized = (fill.price - self.entry_price) * close_qty * dir;
         }
+
         let cost = fill.price * fill.qty.abs();
         self.cash -= cost + fill.fee;
-        self.position += fill.qty;
-        self.entry_price = fill.price;
+        self.position = new_pos;
+
+        // Update entry price based on add/reduce/flip
+        if prev_pos == 0.0 {
+            self.entry_price = fill.price;
+        } else if prev_pos.signum() == new_pos.signum() {
+            if new_pos.abs() > prev_pos.abs() {
+                // Increasing position: use weighted average entry
+                let total = prev_pos.abs() + fill.qty.abs();
+                if total > 0.0 {
+                    self.entry_price =
+                        (self.entry_price * prev_pos.abs() + fill.price * fill.qty.abs()) / total;
+                }
+            }
+            // Reducing position: keep entry price
+        } else if new_pos != 0.0 {
+            // Flipped position: new entry is fill price
+            self.entry_price = fill.price;
+        }
+
         self.equity = self.cash + (self.position * fill.price);
         realized
     }

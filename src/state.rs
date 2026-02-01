@@ -461,7 +461,7 @@ impl Strategy for SimpleMomentum {
         }
 
         // Liquidation cascade: trade with impulse.
-        if market.aux.liquidation_score > self.cfg.liq_score_th {
+        if market.aux.has_liquidations && market.aux.liquidation_score > self.cfg.liq_score_th {
             if market.indicators.z_momentum > 0.0 {
                 return crate::strategy::Action::Buy { qty: 0.001 };
             } else {
@@ -470,7 +470,7 @@ impl Strategy for SimpleMomentum {
         }
 
         // Stablecoin depeg snapback: if symbol is stable-quoted, fade depeg.
-        if market.aux.stable_depeg.abs() > self.cfg.depeg_th {
+        if market.aux.has_depeg && market.aux.stable_depeg.abs() > self.cfg.depeg_th {
             if market.aux.stable_depeg < 0.0 {
                 return crate::strategy::Action::Buy { qty: 0.001 };
             } else {
@@ -550,14 +550,14 @@ impl Strategy for CarryOpportunistic {
         }
 
         // Opportunistic bursts: liquidation cascade or stablecoin depeg.
-        if market.aux.liquidation_score > self.cfg.liq_score_th {
+        if market.aux.has_liquidations && market.aux.liquidation_score > self.cfg.liq_score_th {
             if market.indicators.z_momentum > 0.0 {
                 return crate::strategy::Action::Buy { qty: 0.001 };
             } else {
                 return crate::strategy::Action::Sell { qty: 0.001 };
             }
         }
-        if market.aux.stable_depeg.abs() > self.cfg.depeg_th {
+        if market.aux.has_depeg && market.aux.stable_depeg.abs() > self.cfg.depeg_th {
             if market.aux.stable_depeg < 0.0 {
                 return crate::strategy::Action::Buy { qty: 0.001 };
             } else {

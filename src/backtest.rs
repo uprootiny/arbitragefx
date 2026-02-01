@@ -100,10 +100,18 @@ pub fn run_backtest(cfg: Config, rows: &[CsvRow]) -> Result<(f64, f64)> {
     let mut pending: Vec<PendingOrder> = Vec::new();
     let mut pipeline = FeaturePipeline::new(200, 200, 30, 200);
     let mut friction: Vec<f64> = vec![0.0; strategies.len()];
+    let mut holds: Vec<u64> = vec![0; strategies.len()];
+    let mut guarded_blocks: Vec<u64> = vec![0; strategies.len()];
+    let mut submits: Vec<u64> = vec![0; strategies.len()];
+    let mut fills: Vec<u64> = vec![0; strategies.len()];
+    let mut forced_closes: Vec<u64> = vec![0; strategies.len()];
+    let initial_cash = 1000.0;
     let mut buy_hold_entry = None;
     let mut buy_hold_exit = None;
+    let mut last_row: Option<CsvRow> = None;
 
     for row in rows {
+        last_row = Some(row.clone());
         if buy_hold_entry.is_none() {
             buy_hold_entry = Some(row.c);
         }
@@ -139,6 +147,12 @@ pub fn run_backtest(cfg: Config, rows: &[CsvRow]) -> Result<(f64, f64)> {
             let action = inst.strategy.update(view, &mut inst.state);
             // FIXED: Use current price for MTM risk calculations
             let guarded = risk.apply_with_price(&inst.state, action, row.ts, row.c);
+            if matches!(action, Action::Hold) {
+                holds[idx] += 1;
+            }
+            if !matches!(action, Action::Hold) && matches!(guarded, Action::Hold) {
+                guarded_blocks[idx] += 1;
+            }
 
             let desired = match guarded {
                 Action::Hold => None,
@@ -152,6 +166,7 @@ pub fn run_backtest(cfg: Config, rows: &[CsvRow]) -> Result<(f64, f64)> {
             if let Some((qty, _price)) = desired {
                 // FIXED: Tag order with strategy index
                 pending.push(PendingOrder { qty, submit_ts: row.ts, strategy_idx: idx });
+                submits[idx] += 1;
             }
 
             // FIXED: Only process orders belonging to THIS strategy
@@ -176,6 +191,7 @@ pub fn run_backtest(cfg: Config, rows: &[CsvRow]) -> Result<(f64, f64)> {
                     .state
                     .portfolio
                     .apply_fill(Fill { price: fill_price, qty: fill_qty, fee, ts: row.ts });
+                fills[idx] += 1;
                 inst.state.metrics.pnl += realized;
                 if realized > 0.0 {
                     inst.state.metrics.wins += 1;
@@ -201,6 +217,30 @@ pub fn run_backtest(cfg: Config, rows: &[CsvRow]) -> Result<(f64, f64)> {
         }
     }
 
+    if let Some(last) = last_row {
+        let view = market.view(&cfg.symbol);
+        for (idx, inst) in strategies.iter_mut().enumerate() {
+            if inst.state.portfolio.position.abs() > 1e-9 {
+                let qty = -inst.state.portfolio.position;
+                let fill_price = slippage_price(last.c, qty, last.v, exec_cfg.slippage_k, view.indicators.vol);
+                let fee = fill_price * qty.abs() * exec_cfg.fee_rate;
+                friction[idx] += fee;
+                let realized = inst
+                    .state
+                    .portfolio
+                    .apply_fill(Fill { price: fill_price, qty, fee, ts: last.ts });
+                inst.state.metrics.pnl += realized;
+                if realized > 0.0 {
+                    inst.state.metrics.wins += 1;
+                } else if realized < 0.0 {
+                    inst.state.metrics.losses += 1;
+                }
+                fills[idx] += 1;
+                forced_closes[idx] += 1;
+            }
+        }
+    }
+
     let pnl = strategies.iter().map(|s| s.state.metrics.pnl).sum::<f64>();
     let max_dd = strategies
         .iter()
@@ -215,16 +255,26 @@ pub fn run_backtest(cfg: Config, rows: &[CsvRow]) -> Result<(f64, f64)> {
     println!("baseline=no_trade pnl=0.0000");
     for (idx, inst) in strategies.iter().enumerate() {
         let total_trades = inst.state.metrics.wins + inst.state.metrics.losses;
+        let equity_pnl = inst.state.portfolio.equity - initial_cash;
         println!(
-            "strategy={} pnl={:.4} friction={:.4} friction_only_pnl={:.4} dd={:.4} trades={} wins={} losses={}",
+            "strategy={} pnl={:.4} equity_pnl={:.4} equity={:.4} pos={:.6} entry={:.2} friction={:.4} friction_only_pnl={:.4} dd={:.4} trades={} wins={} losses={} holds={} guarded={} submits={} fills={} forced_closes={}",
             inst.id,
             inst.state.metrics.pnl,
+            equity_pnl,
+            inst.state.portfolio.equity,
+            inst.state.portfolio.position,
+            inst.state.portfolio.entry_price,
             friction[idx],
             -friction[idx],
             inst.state.metrics.max_drawdown,
             total_trades,
             inst.state.metrics.wins,
-            inst.state.metrics.losses
+            inst.state.metrics.losses,
+            holds[idx],
+            guarded_blocks[idx],
+            submits[idx],
+            fills[idx],
+            forced_closes[idx]
         );
     }
     Ok((pnl, max_dd))

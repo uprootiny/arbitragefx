@@ -200,16 +200,30 @@ impl RiskEngine {
     /// Apply risk checks with current market price for MTM calculations
     pub fn apply_with_price(&mut self, state: &StrategyState, action: Action, now_ts: u64, current_price: f64) -> Action {
         if state.trading_halted {
-            return Action::Hold;
+            return match action {
+                Action::Close => Action::Close,
+                _ => Action::Hold,
+            };
         }
         if std::path::Path::new(&self.cfg.kill_file).exists() {
-            return Action::Hold;
+            return match action {
+                Action::Close => Action::Close,
+                _ => Action::Hold,
+            };
         }
         if now_ts.saturating_sub(state.last_loss_ts) < self.cfg.cooldown_secs {
-            return Action::Hold;
+            return match action {
+                Action::Close => Action::Close,
+                _ => Action::Hold,
+            };
         }
         if state.trades_today >= self.cfg.max_trades_per_day {
-            return Action::Hold;
+            return match action {
+                Action::Close => Action::Close,
+                Action::Sell { qty } if state.portfolio.position > 0.0 => Action::Sell { qty },
+                Action::Buy { qty } if state.portfolio.position < 0.0 => Action::Buy { qty },
+                _ => Action::Hold,
+            };
         }
 
         // FIXED: Check both realized AND unrealized loss
