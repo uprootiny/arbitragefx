@@ -1,0 +1,567 @@
+{
+  "hypotheses": {
+    "H004_trend_filter": {
+      "id": "H004_trend_filter",
+      "statement": "Filtering trades by EMA trend direction reduces losses",
+      "rationale": "Trading with the trend has higher success probability",
+      "testable_prediction": "Trend-aligned trades have higher win rate than unfiltered",
+      "success_criteria": {
+        "min_trades": 10,
+        "min_win_rate": 0.4,
+        "min_sharpe": 0.4,
+        "max_drawdown": -0.25,
+        "min_profit_factor": 1.0,
+        "applies_to_regime": null
+      },
+      "status": "Testing",
+      "created_at": 1770037618,
+      "updated_at": 1770037618,
+      "parent_id": null,
+      "tags": [
+        "filter",
+        "trend"
+      ]
+    },
+    "H007_confluence": {
+      "id": "H007_confluence",
+      "statement": "Multiple confirming indicators improve trade quality",
+      "rationale": "Independent signals aligning reduces false positives",
+      "testable_prediction": "3+ indicator confluence has higher win rate than single",
+      "success_criteria": {
+        "min_trades": 10,
+        "min_win_rate": 0.55,
+        "min_sharpe": 0.5,
+        "max_drawdown": -0.15,
+        "min_profit_factor": 1.3,
+        "applies_to_regime": null
+      },
+      "status": "Testing",
+      "created_at": 1770037618,
+      "updated_at": 1770037618,
+      "parent_id": null,
+      "tags": [
+        "confluence",
+        "multi_indicator"
+      ]
+    },
+    "H002_mean_reversion": {
+      "id": "H002_mean_reversion",
+      "statement": "Extreme price deviations mean-revert",
+      "rationale": "Overextension leads to retracement as buyers/sellers exhaust",
+      "testable_prediction": "Counter-trend entries at z_stretch > 2.0 should profit",
+      "success_criteria": {
+        "min_trades": 15,
+        "min_win_rate": 0.55,
+        "min_sharpe": 0.4,
+        "max_drawdown": -0.15,
+        "min_profit_factor": 1.2,
+        "applies_to_regime": "Ranging"
+      },
+      "status": "Testing",
+      "created_at": 1770037618,
+      "updated_at": 1770037618,
+      "parent_id": null,
+      "tags": [
+        "mean_reversion",
+        "contrarian"
+      ]
+    },
+    "H006_bear_short": {
+      "id": "H006_bear_short",
+      "statement": "Short-selling in bear markets outperforms going long",
+      "rationale": "Align with dominant market direction",
+      "testable_prediction": "Short-biased strategy beats long-only in >-15% markets",
+      "success_criteria": {
+        "min_trades": 10,
+        "min_win_rate": 0.35,
+        "min_sharpe": 0.5,
+        "max_drawdown": -0.35,
+        "min_profit_factor": 1.0,
+        "applies_to_regime": "StrongBear"
+      },
+      "status": "Testing",
+      "created_at": 1770037618,
+      "updated_at": 1770037618,
+      "parent_id": null,
+      "tags": [
+        "short",
+        "bear_market"
+      ]
+    },
+    "H001_momentum": {
+      "id": "H001_momentum",
+      "statement": "Positive momentum predicts continued price increases",
+      "rationale": "Trend persistence - assets in motion tend to stay in motion",
+      "testable_prediction": "Long positions on z_momentum > 1.0 should be profitable",
+      "success_criteria": {
+        "min_trades": 20,
+        "min_win_rate": 0.45,
+        "min_sharpe": 0.3,
+        "max_drawdown": -0.25,
+        "min_profit_factor": 1.1,
+        "applies_to_regime": "ModerateBull"
+      },
+      "status": "Testing",
+      "created_at": 1770037618,
+      "updated_at": 1770037618,
+      "parent_id": null,
+      "tags": [
+        "momentum",
+        "trend"
+      ]
+    },
+    "H005_rsi_extremes": {
+      "id": "H005_rsi_extremes",
+      "statement": "RSI extremes (<30, >70) predict reversals",
+      "rationale": "Overbought/oversold conditions indicate exhaustion",
+      "testable_prediction": "Counter-RSI trades at extremes should be profitable",
+      "success_criteria": {
+        "min_trades": 15,
+        "min_win_rate": 0.5,
+        "min_sharpe": 0.3,
+        "max_drawdown": -0.2,
+        "min_profit_factor": 1.15,
+        "applies_to_regime": null
+      },
+      "status": "Testing",
+      "created_at": 1770037618,
+      "updated_at": 1770037618,
+      "parent_id": null,
+      "tags": [
+        "rsi",
+        "mean_reversion"
+      ]
+    },
+    "H003_volatility_scaling": {
+      "id": "H003_volatility_scaling",
+      "statement": "Position sizing inverse to volatility improves risk-adjusted returns",
+      "rationale": "Equal risk per trade regardless of market conditions",
+      "testable_prediction": "Vol-scaled positions have better Sharpe than fixed sizing",
+      "success_criteria": {
+        "min_trades": 30,
+        "min_win_rate": null,
+        "min_sharpe": 0.5,
+        "max_drawdown": -0.2,
+        "min_profit_factor": null,
+        "applies_to_regime": null
+      },
+      "status": "Testing",
+      "created_at": 1770037618,
+      "updated_at": 1770037618,
+      "parent_id": null,
+      "tags": [
+        "sizing",
+        "volatility"
+      ]
+    },
+    "H008_vol_breakout": {
+      "id": "H008_vol_breakout",
+      "statement": "Volatility expansions from low-vol periods predict direction",
+      "rationale": "Consolidation breakouts carry momentum",
+      "testable_prediction": "Trades on vol_ratio > 1.5 from vol_ratio < 0.7 are profitable",
+      "success_criteria": {
+        "min_trades": 8,
+        "min_win_rate": 0.38,
+        "min_sharpe": 0.35,
+        "max_drawdown": -0.25,
+        "min_profit_factor": 1.1,
+        "applies_to_regime": null
+      },
+      "status": "Testing",
+      "created_at": 1770037618,
+      "updated_at": 1770037618,
+      "parent_id": null,
+      "tags": [
+        "breakout",
+        "volatility"
+      ]
+    }
+  },
+  "evidence": [
+    {
+      "id": "E1_H004_trend_filter",
+      "hypothesis_id": "H004_trend_filter",
+      "timestamp": 1770037618,
+      "data_source": "data/btc_1h_180d.csv",
+      "regime": "StrongBear",
+      "metrics": {
+        "pnl": 1302.847450000001,
+        "trades": 18,
+        "wins": 8,
+        "losses": 10,
+        "win_rate": 0.4444444444444444,
+        "sharpe": 0.6228997689910033,
+        "max_drawdown": -0.1152772738469912,
+        "profit_factor": 1.358577751165294,
+        "avg_win": 2.6841162500000006,
+        "avg_loss": 1.9756810000000011,
+        "expectancy": 0.09533999999999954,
+        "bars_tested": 5000,
+        "execution_time_ms": 0
+      },
+      "supports_hypothesis": true,
+      "notes": "Batch test"
+    },
+    {
+      "id": "E2_H006_bear_short",
+      "hypothesis_id": "H006_bear_short",
+      "timestamp": 1770037618,
+      "data_source": "data/btc_1h_180d.csv",
+      "regime": "StrongBear",
+      "metrics": {
+        "pnl": 17075.904910000016,
+        "trades": 166,
+        "wins": 63,
+        "losses": 103,
+        "win_rate": 0.3795180722891566,
+        "sharpe": 1.9619905209031117,
+        "max_drawdown": -0.0031954617400453025,
+        "profit_factor": 1.5281787987740638,
+        "avg_win": 2.1507695238095237,
+        "avg_loss": 1.4074069902912636,
+        "expectancy": -0.05701469879518162,
+        "bars_tested": 5000,
+        "execution_time_ms": 0
+      },
+      "supports_hypothesis": true,
+      "notes": "Batch test"
+    },
+    {
+      "id": "E3_H002_mean_reversion",
+      "hypothesis_id": "H002_mean_reversion",
+      "timestamp": 1770037618,
+      "data_source": "data/btc_1h_180d.csv",
+      "regime": "StrongBear",
+      "metrics": {
+        "pnl": 967.7239400000016,
+        "trades": 67,
+        "wins": 31,
+        "losses": 36,
+        "win_rate": 0.4626865671641791,
+        "sharpe": 0.39404970293185265,
+        "max_drawdown": -0.26599582826454016,
+        "profit_factor": 0.9557228793276384,
+        "avg_win": 1.592534838709678,
+        "avg_loss": 1.6663144444444438,
+        "expectancy": -0.1584886567164172,
+        "bars_tested": 5000,
+        "execution_time_ms": 0
+      },
+      "supports_hypothesis": false,
+      "notes": "Batch test"
+    },
+    {
+      "id": "E4_H007_confluence",
+      "hypothesis_id": "H007_confluence",
+      "timestamp": 1770037618,
+      "data_source": "data/btc_1h_180d.csv",
+      "regime": "StrongBear",
+      "metrics": {
+        "pnl": 780.6036499999996,
+        "trades": 23,
+        "wins": 9,
+        "losses": 14,
+        "win_rate": 0.391304347826087,
+        "sharpe": 0.3560683891902112,
+        "max_drawdown": -0.23442488584183663,
+        "profit_factor": 1.5648237257251727,
+        "avg_win": 2.6143700000000014,
+        "avg_loss": 1.670712142857143,
+        "expectancy": 0.006059130434783011,
+        "bars_tested": 5000,
+        "execution_time_ms": 0
+      },
+      "supports_hypothesis": false,
+      "notes": "Batch test"
+    },
+    {
+      "id": "E5_H001_momentum",
+      "hypothesis_id": "H001_momentum",
+      "timestamp": 1770037618,
+      "data_source": "data/btc_1h_180d.csv",
+      "regime": "StrongBear",
+      "metrics": {
+        "pnl": 73.13729999999964,
+        "trades": 135,
+        "wins": 57,
+        "losses": 78,
+        "win_rate": 0.4222222222222222,
+        "sharpe": -0.11656271247643007,
+        "max_drawdown": -1.4325069900000005,
+        "profit_factor": 1.4946048879694729,
+        "avg_win": 2.1215015789473677,
+        "avg_loss": 1.419439743589745,
+        "expectancy": 0.07562437037036929,
+        "bars_tested": 5000,
+        "execution_time_ms": 0
+      },
+      "supports_hypothesis": false,
+      "notes": "Batch test"
+    },
+    {
+      "id": "E6_H008_vol_breakout",
+      "hypothesis_id": "H008_vol_breakout",
+      "timestamp": 1770037618,
+      "data_source": "data/btc_1h_180d.csv",
+      "regime": "StrongBear",
+      "metrics": {
+        "pnl": 815.3984700000003,
+        "trades": 15,
+        "wins": 6,
+        "losses": 9,
+        "win_rate": 0.4,
+        "sharpe": 0.4502809862908839,
+        "max_drawdown": -0.11923462045855884,
+        "profit_factor": 1.8330640456165508,
+        "avg_win": 2.6635866666666677,
+        "avg_loss": 1.453078888888888,
+        "expectancy": 0.19358733333333433,
+        "bars_tested": 5000,
+        "execution_time_ms": 1
+      },
+      "supports_hypothesis": true,
+      "notes": "Batch test"
+    },
+    {
+      "id": "E7_H005_rsi_extremes",
+      "hypothesis_id": "H005_rsi_extremes",
+      "timestamp": 1770037618,
+      "data_source": "data/btc_1h_180d.csv",
+      "regime": "StrongBear",
+      "metrics": {
+        "pnl": 518.749569999999,
+        "trades": 130,
+        "wins": 61,
+        "losses": 69,
+        "win_rate": 0.4692307692307692,
+        "sharpe": 0.24262027981369624,
+        "max_drawdown": -0.4773308972559597,
+        "profit_factor": 1.0950207966961156,
+        "avg_win": 1.8460057377049188,
+        "avg_loss": 1.6858179710144927,
+        "expectancy": -0.028577615384615007,
+        "bars_tested": 5000,
+        "execution_time_ms": 0
+      },
+      "supports_hypothesis": false,
+      "notes": "Batch test"
+    },
+    {
+      "id": "E8_H003_volatility_scaling",
+      "hypothesis_id": "H003_volatility_scaling",
+      "timestamp": 1770037618,
+      "data_source": "data/btc_1h_180d.csv",
+      "regime": "StrongBear",
+      "metrics": {
+        "pnl": -1075.1518496572426,
+        "trades": 250,
+        "wins": 108,
+        "losses": 142,
+        "win_rate": 0.432,
+        "sharpe": 0.3805874967405703,
+        "max_drawdown": -1.7570034434668174,
+        "profit_factor": 1.2277644380343795,
+        "avg_win": 1.2857833921714106,
+        "avg_loss": 1.0472557701947434,
+        "expectancy": -0.039382852052564976,
+        "bars_tested": 5000,
+        "execution_time_ms": 1
+      },
+      "supports_hypothesis": false,
+      "notes": "Batch test"
+    },
+    {
+      "id": "E9_H004_trend_filter",
+      "hypothesis_id": "H004_trend_filter",
+      "timestamp": 1770042354,
+      "data_source": "data/btc_1h_180d.csv",
+      "regime": "StrongBear",
+      "metrics": {
+        "pnl": 1302.8474500000007,
+        "trades": 18,
+        "wins": 8,
+        "losses": 10,
+        "win_rate": 0.4444444444444444,
+        "sharpe": 0.6228997689910033,
+        "max_drawdown": -0.11527727384699121,
+        "profit_factor": 1.358577751165294,
+        "avg_win": 2.6841162500000006,
+        "avg_loss": 1.9756810000000011,
+        "expectancy": 0.09533999999999954,
+        "bars_tested": 5000,
+        "execution_time_ms": 0
+      },
+      "supports_hypothesis": true,
+      "notes": "Batch test"
+    },
+    {
+      "id": "E10_H007_confluence",
+      "hypothesis_id": "H007_confluence",
+      "timestamp": 1770042354,
+      "data_source": "data/btc_1h_180d.csv",
+      "regime": "StrongBear",
+      "metrics": {
+        "pnl": 780.6036499999996,
+        "trades": 23,
+        "wins": 9,
+        "losses": 14,
+        "win_rate": 0.391304347826087,
+        "sharpe": 0.3560683891902112,
+        "max_drawdown": -0.23442488584183666,
+        "profit_factor": 1.5648237257251727,
+        "avg_win": 2.6143700000000014,
+        "avg_loss": 1.670712142857143,
+        "expectancy": 0.006059130434783011,
+        "bars_tested": 5000,
+        "execution_time_ms": 0
+      },
+      "supports_hypothesis": false,
+      "notes": "Batch test"
+    },
+    {
+      "id": "E11_H002_mean_reversion",
+      "hypothesis_id": "H002_mean_reversion",
+      "timestamp": 1770042354,
+      "data_source": "data/btc_1h_180d.csv",
+      "regime": "StrongBear",
+      "metrics": {
+        "pnl": 967.7239400000017,
+        "trades": 67,
+        "wins": 31,
+        "losses": 36,
+        "win_rate": 0.4626865671641791,
+        "sharpe": 0.39404970293185265,
+        "max_drawdown": -0.26599582826454016,
+        "profit_factor": 0.9557228793276384,
+        "avg_win": 1.592534838709678,
+        "avg_loss": 1.6663144444444438,
+        "expectancy": -0.1584886567164172,
+        "bars_tested": 5000,
+        "execution_time_ms": 0
+      },
+      "supports_hypothesis": false,
+      "notes": "Batch test"
+    },
+    {
+      "id": "E12_H006_bear_short",
+      "hypothesis_id": "H006_bear_short",
+      "timestamp": 1770042354,
+      "data_source": "data/btc_1h_180d.csv",
+      "regime": "StrongBear",
+      "metrics": {
+        "pnl": 17075.904910000016,
+        "trades": 166,
+        "wins": 63,
+        "losses": 103,
+        "win_rate": 0.3795180722891566,
+        "sharpe": 1.9619905209031117,
+        "max_drawdown": -0.0031954617400453025,
+        "profit_factor": 1.5281787987740638,
+        "avg_win": 2.1507695238095237,
+        "avg_loss": 1.4074069902912636,
+        "expectancy": -0.05701469879518162,
+        "bars_tested": 5000,
+        "execution_time_ms": 0
+      },
+      "supports_hypothesis": true,
+      "notes": "Batch test"
+    },
+    {
+      "id": "E13_H001_momentum",
+      "hypothesis_id": "H001_momentum",
+      "timestamp": 1770042354,
+      "data_source": "data/btc_1h_180d.csv",
+      "regime": "StrongBear",
+      "metrics": {
+        "pnl": 73.13729999999964,
+        "trades": 135,
+        "wins": 57,
+        "losses": 78,
+        "win_rate": 0.4222222222222222,
+        "sharpe": -0.11656271247643009,
+        "max_drawdown": -1.4325069900000003,
+        "profit_factor": 1.4946048879694727,
+        "avg_win": 2.1215015789473677,
+        "avg_loss": 1.419439743589745,
+        "expectancy": 0.07562437037036929,
+        "bars_tested": 5000,
+        "execution_time_ms": 0
+      },
+      "supports_hypothesis": false,
+      "notes": "Batch test"
+    },
+    {
+      "id": "E14_H005_rsi_extremes",
+      "hypothesis_id": "H005_rsi_extremes",
+      "timestamp": 1770042354,
+      "data_source": "data/btc_1h_180d.csv",
+      "regime": "StrongBear",
+      "metrics": {
+        "pnl": 518.749569999999,
+        "trades": 130,
+        "wins": 61,
+        "losses": 69,
+        "win_rate": 0.46923076923076923,
+        "sharpe": 0.24262027981369624,
+        "max_drawdown": -0.4773308972559597,
+        "profit_factor": 1.0950207966961156,
+        "avg_win": 1.8460057377049188,
+        "avg_loss": 1.6858179710144927,
+        "expectancy": -0.028577615384615007,
+        "bars_tested": 5000,
+        "execution_time_ms": 0
+      },
+      "supports_hypothesis": false,
+      "notes": "Batch test"
+    },
+    {
+      "id": "E15_H003_volatility_scaling",
+      "hypothesis_id": "H003_volatility_scaling",
+      "timestamp": 1770042354,
+      "data_source": "data/btc_1h_180d.csv",
+      "regime": "StrongBear",
+      "metrics": {
+        "pnl": -1075.1518496572426,
+        "trades": 250,
+        "wins": 108,
+        "losses": 142,
+        "win_rate": 0.432,
+        "sharpe": 0.38058749674057035,
+        "max_drawdown": -1.7570034434668174,
+        "profit_factor": 1.2277644380343797,
+        "avg_win": 1.2857833921714106,
+        "avg_loss": 1.0472557701947434,
+        "expectancy": -0.039382852052564976,
+        "bars_tested": 5000,
+        "execution_time_ms": 0
+      },
+      "supports_hypothesis": false,
+      "notes": "Batch test"
+    },
+    {
+      "id": "E16_H008_vol_breakout",
+      "hypothesis_id": "H008_vol_breakout",
+      "timestamp": 1770042354,
+      "data_source": "data/btc_1h_180d.csv",
+      "regime": "StrongBear",
+      "metrics": {
+        "pnl": 815.3984700000003,
+        "trades": 15,
+        "wins": 6,
+        "losses": 9,
+        "win_rate": 0.4,
+        "sharpe": 0.4502809862908839,
+        "max_drawdown": -0.11923462045855883,
+        "profit_factor": 1.8330640456165508,
+        "avg_win": 2.6635866666666677,
+        "avg_loss": 1.4530788888888881,
+        "expectancy": 0.19358733333333433,
+        "bars_tested": 5000,
+        "execution_time_ms": 0
+      },
+      "supports_hypothesis": true,
+      "notes": "Batch test"
+    }
+  ],
+  "regime_performance": {}
+}
