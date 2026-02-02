@@ -1,14 +1,131 @@
 use crate::strategy::{Action, StrategyState};
 use crate::state::Config;
 
+/// Kelly criterion position sizing
+pub fn kelly_size(win_rate: f64, avg_win: f64, avg_loss: f64, equity: f64, fraction: f64) -> f64 {
+    if avg_loss <= 0.0 || win_rate <= 0.0 || win_rate >= 1.0 {
+        return 0.0;
+    }
+    let win_loss_ratio = avg_win / avg_loss;
+    let kelly = win_rate - (1.0 - win_rate) / win_loss_ratio;
+    if kelly <= 0.0 {
+        return 0.0;  // Negative edge, don't trade
+    }
+    (kelly * fraction * equity).max(0.0)
+}
+
+/// Calculate expectancy per trade
+pub fn expectancy(win_rate: f64, avg_win: f64, avg_loss: f64) -> f64 {
+    (win_rate * avg_win) - ((1.0 - win_rate) * avg_loss)
+}
+
+/// Risk of ruin calculation (simplified)
+pub fn risk_of_ruin(win_rate: f64, risk_per_trade: f64, account_units: f64) -> f64 {
+    if win_rate >= 1.0 || win_rate <= 0.0 || risk_per_trade <= 0.0 {
+        return 0.0;
+    }
+    let loss_rate = 1.0 - win_rate;
+    let ratio = loss_rate / win_rate;
+    ratio.powf(account_units / risk_per_trade)
+}
+
+/// Fill probability for limit orders (adverse selection model)
+pub fn limit_fill_probability(limit_price: f64, market_price: f64, volatility: f64, is_buy: bool) -> f64 {
+    if volatility <= 0.0 {
+        return 0.5;
+    }
+    let distance = if is_buy {
+        (market_price - limit_price) / market_price  // How far below market
+    } else {
+        (limit_price - market_price) / market_price  // How far above market
+    };
+
+    if distance < 0.0 {
+        // Limit is worse than market, fills instantly but why would you?
+        return 1.0;
+    }
+
+    // Exponential decay based on distance relative to volatility
+    let base_prob = (-distance / volatility).exp();
+    // Adverse selection discount: fills that happen tend to be losers
+    (base_prob * 0.7).min(1.0).max(0.0)
+}
+
 pub struct RiskEngine {
     cfg: Config,
+    // Track for Kelly sizing
+    recent_wins: u64,
+    recent_losses: u64,
+    total_win_amount: f64,
+    total_loss_amount: f64,
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::strategy::{MetricsState, PortfolioState};
+
+    #[test]
+    fn test_kelly_size_positive_edge() {
+        // 60% win rate, 1.5:1 reward ratio
+        let size = kelly_size(0.6, 1.5, 1.0, 10000.0, 0.25);
+        assert!(size > 0.0, "Should recommend positive size");
+        assert!(size < 10000.0 * 0.25, "Should be less than 25% of equity");
+    }
+
+    #[test]
+    fn test_kelly_size_negative_edge() {
+        // 40% win rate, 1:1 reward ratio = negative expectancy
+        let size = kelly_size(0.4, 1.0, 1.0, 10000.0, 0.25);
+        assert_eq!(size, 0.0, "Should not trade with negative edge");
+    }
+
+    #[test]
+    fn test_expectancy_calculation() {
+        // 55% win, avg win $2, avg loss $1
+        let exp = expectancy(0.55, 2.0, 1.0);
+        // Expected = 0.55 * 2 - 0.45 * 1 = 1.1 - 0.45 = 0.65
+        assert!((exp - 0.65).abs() < 0.01);
+    }
+
+    #[test]
+    fn test_risk_of_ruin() {
+        // 55% win rate, 5% risk per trade, 20 units of account
+        let ror = risk_of_ruin(0.55, 0.05, 1.0);
+        assert!(ror < 1.0, "Risk of ruin should be < 100%");
+        assert!(ror > 0.0, "Risk of ruin should be > 0%");
+    }
+
+    #[test]
+    fn test_limit_fill_probability() {
+        // Buy limit at market = immediate fill (high probability)
+        // Buy limit below market = only fills if price drops (lower probability)
+        let prob_at = limit_fill_probability(100.0, 100.0, 0.02, true);
+        let prob_below = limit_fill_probability(99.0, 100.0, 0.02, true);
+        assert!(prob_at > prob_below, "Limit at market should fill more often than below");
+        assert!(prob_below > 0.0, "Limit below should still have some fill probability");
+        assert!(prob_below < 1.0, "Limit below should not guarantee fill");
+    }
+
+    #[test]
+    fn test_risk_engine_kelly_tracking() {
+        let cfg = Config::from_env();
+        let mut engine = RiskEngine::new(cfg);
+
+        // Record enough trades (minimum 5 for expectancy calculation)
+        engine.record_trade(10.0);  // Win
+        engine.record_trade(10.0);  // Win
+        engine.record_trade(-5.0);  // Loss
+        engine.record_trade(10.0);  // Win
+        engine.record_trade(10.0);  // Win
+        engine.record_trade(-5.0);  // Loss
+
+        // 4 wins, 2 losses = 66.7% win rate
+        // Avg win = 10, avg loss = 5, ratio = 2
+        // Expectancy = 0.667 * 10 - 0.333 * 5 = 6.67 - 1.67 = 5.0
+        let exp = engine.current_expectancy();
+        assert!(exp > 0.0, "Expectancy should be positive with 4W/2L at 2:1 ratio");
+    }
 
     fn make_config() -> Config {
         let mut cfg = Config::from_env();
@@ -175,7 +292,65 @@ mod tests {
 
 impl RiskEngine {
     pub fn new(cfg: Config) -> Self {
-        Self { cfg }
+        Self {
+            cfg,
+            recent_wins: 0,
+            recent_losses: 0,
+            total_win_amount: 0.0,
+            total_loss_amount: 0.0,
+        }
+    }
+
+    /// Record a trade result for Kelly sizing
+    pub fn record_trade(&mut self, pnl: f64) {
+        if pnl > 0.0 {
+            self.recent_wins += 1;
+            self.total_win_amount += pnl;
+        } else if pnl < 0.0 {
+            self.recent_losses += 1;
+            self.total_loss_amount += pnl.abs();
+        }
+    }
+
+    /// Get recommended position size based on Kelly criterion
+    pub fn kelly_position_size(&self, equity: f64) -> f64 {
+        let total_trades = self.recent_wins + self.recent_losses;
+        if total_trades < 10 {
+            // Not enough data, use fixed small size
+            return equity * 0.01;  // 1% of equity
+        }
+        let win_rate = self.recent_wins as f64 / total_trades as f64;
+        let avg_win = if self.recent_wins > 0 {
+            self.total_win_amount / self.recent_wins as f64
+        } else {
+            0.0
+        };
+        let avg_loss = if self.recent_losses > 0 {
+            self.total_loss_amount / self.recent_losses as f64
+        } else {
+            1.0  // Avoid division by zero
+        };
+        kelly_size(win_rate, avg_win, avg_loss, equity, 0.25)  // 1/4 Kelly
+    }
+
+    /// Get current expectancy per trade
+    pub fn current_expectancy(&self) -> f64 {
+        let total_trades = self.recent_wins + self.recent_losses;
+        if total_trades < 5 {
+            return 0.0;
+        }
+        let win_rate = self.recent_wins as f64 / total_trades as f64;
+        let avg_win = if self.recent_wins > 0 {
+            self.total_win_amount / self.recent_wins as f64
+        } else {
+            0.0
+        };
+        let avg_loss = if self.recent_losses > 0 {
+            self.total_loss_amount / self.recent_losses as f64
+        } else {
+            0.0
+        };
+        expectancy(win_rate, avg_win, avg_loss)
     }
 
     /// Calculate unrealized PnL for current position

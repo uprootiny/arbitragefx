@@ -11,6 +11,7 @@ pub struct Config {
     pub api_key: Option<String>,
     pub api_secret: Option<String>,
     pub binance_base: String,
+    pub binance_fapi_base: String,
     pub kraken_base: String,
     pub sqlite_path: String,
     pub persist_every_secs: u64,
@@ -41,6 +42,12 @@ pub struct Config {
     pub stretch_th: f64,
     pub kill_file: String,
     pub wal_path: String,
+    pub reconcile_secs: u64,
+    pub cancel_after_candles: u64,
+    pub reconcile_drift_pct: f64,
+    pub reconcile_drift_abs: f64,
+    pub max_fill_slip_pct: f64,
+    pub fill_channel_capacity: usize,
 }
 
 impl Config {
@@ -52,6 +59,7 @@ impl Config {
             api_key: std::env::var("API_KEY").ok(),
             api_secret: std::env::var("API_SECRET").ok(),
             binance_base: std::env::var("BINANCE_BASE").unwrap_or_else(|_| "https://api.binance.com".to_string()),
+            binance_fapi_base: std::env::var("BINANCE_FAPI_BASE").unwrap_or_else(|_| "https://fapi.binance.com".to_string()),
             kraken_base: std::env::var("KRAKEN_BASE").unwrap_or_else(|_| "https://api.kraken.com".to_string()),
             sqlite_path: std::env::var("SQLITE_PATH").unwrap_or_else(|_| "./bot.sqlite".to_string()),
             persist_every_secs: std::env::var("PERSIST_SECS").ok().and_then(|v| v.parse().ok()).unwrap_or(300),
@@ -82,6 +90,12 @@ impl Config {
             stretch_th: std::env::var("STRETCH_TH").ok().and_then(|v| v.parse().ok()).unwrap_or(0.8),
             kill_file: std::env::var("KILL_FILE").unwrap_or_else(|_| "/tmp/STOP".to_string()),
             wal_path: std::env::var("WAL_PATH").unwrap_or_else(|_| "./bot.wal".to_string()),
+            reconcile_secs: std::env::var("RECONCILE_SECS").ok().and_then(|v| v.parse().ok()).unwrap_or(60),
+            cancel_after_candles: std::env::var("CANCEL_AFTER_CANDLES").ok().and_then(|v| v.parse().ok()).unwrap_or(3),
+            reconcile_drift_pct: std::env::var("RECONCILE_DRIFT_PCT").ok().and_then(|v| v.parse().ok()).unwrap_or(0.02),
+            reconcile_drift_abs: std::env::var("RECONCILE_DRIFT_ABS").ok().and_then(|v| v.parse().ok()).unwrap_or(0.0005),
+            max_fill_slip_pct: std::env::var("MAX_FILL_SLIP_PCT").ok().and_then(|v| v.parse().ok()).unwrap_or(0.02),
+            fill_channel_capacity: std::env::var("FILL_CHANNEL_CAP").ok().and_then(|v| v.parse().ok()).unwrap_or(256),
         }
     }
 
@@ -417,6 +431,7 @@ impl StrategyInstance {
 }
 
 struct SimpleMomentum {
+    #[allow(dead_code)]
     id: String,
     start_delay: u64,
     cfg: Config,
@@ -425,6 +440,10 @@ struct SimpleMomentum {
 impl Strategy for SimpleMomentum {
     fn id(&self) -> &'static str {
         "simple-momentum"
+    }
+
+    fn aux_requirements(&self) -> crate::strategy::AuxRequirements {
+        crate::strategy::AuxRequirements::full()
     }
 
     fn update(&mut self, market: MarketView, state: &mut StrategyState) -> crate::strategy::Action {
@@ -439,10 +458,31 @@ impl Strategy for SimpleMomentum {
             }
         }
 
+        // Trend filter: detect regime from EMA crossover
+        let in_uptrend = market.indicators.ema_fast > market.indicators.ema_slow;
+        let in_downtrend = market.indicators.ema_fast < market.indicators.ema_slow;
+        let trend_strength = if market.indicators.ema_slow > 0.0 {
+            (market.indicators.ema_fast - market.indicators.ema_slow).abs() / market.indicators.ema_slow
+        } else {
+            0.0
+        };
+        let strong_trend = trend_strength > 0.01; // 1% divergence = strong trend
+
+        // Balanced score: momentum-aligned, no mean-reversion bonus against trend
+        let stretch_contrib = if (in_uptrend && market.indicators.z_stretch < 0.0)
+            || (in_downtrend && market.indicators.z_stretch > 0.0)
+        {
+            // Mean reversion aligns with trend, allow it
+            -0.4 * market.indicators.z_stretch
+        } else {
+            // Mean reversion against trend, ignore or penalize
+            0.0
+        };
+
         let score = 1.0 * market.indicators.z_momentum
-            + 0.5 * market.indicators.z_vol
-            + 0.7 * market.indicators.z_volume_spike
-            - 0.8 * market.indicators.z_stretch;
+            + 0.3 * market.indicators.z_vol
+            + 0.5 * market.indicators.z_volume_spike
+            + stretch_contrib;
 
         let expected_edge = score.abs() * self.cfg.edge_scale;
         if expected_edge < self.cfg.edge_hurdle {
@@ -495,12 +535,14 @@ impl Strategy for SimpleMomentum {
             return crate::strategy::Action::Hold;
         }
 
-        // Volatility regime switch: low vol => follow momentum; high vol => mean reversion.
+        // Volatility regime switch: low vol => follow momentum; high vol => trend-aligned mean reversion.
         let vol_ratio = if market.indicators.vol_mean > 0.0 {
             market.indicators.vol / market.indicators.vol_mean
         } else {
             1.0
         };
+
+        // Low volatility: follow momentum
         if vol_ratio < self.cfg.vol_low {
             if market.indicators.z_momentum > self.cfg.mom_th {
                 return crate::strategy::Action::Buy { qty: 0.001 };
@@ -508,26 +550,46 @@ impl Strategy for SimpleMomentum {
             if market.indicators.z_momentum < -self.cfg.mom_th {
                 return crate::strategy::Action::Sell { qty: 0.001 };
             }
-        } else if vol_ratio > self.cfg.vol_high {
-            if market.indicators.z_stretch > self.cfg.stretch_th {
+        }
+        // High volatility: only mean-revert if aligned with trend OR trend is weak
+        else if vol_ratio > self.cfg.vol_high {
+            // Stretched above in uptrend or weak trend: sell expecting reversion
+            if market.indicators.z_stretch > self.cfg.stretch_th && (in_uptrend || !strong_trend) {
                 return crate::strategy::Action::Sell { qty: 0.001 };
             }
-            if market.indicators.z_stretch < -self.cfg.stretch_th {
+            // Stretched below in downtrend or weak trend: buy expecting reversion
+            if market.indicators.z_stretch < -self.cfg.stretch_th && (in_downtrend || !strong_trend) {
+                return crate::strategy::Action::Buy { qty: 0.001 };
+            }
+            // In strong opposite trend, don't mean-revert - follow trend instead
+            if strong_trend && in_downtrend && market.indicators.z_momentum < -self.cfg.mom_th {
+                return crate::strategy::Action::Sell { qty: 0.001 };
+            }
+            if strong_trend && in_uptrend && market.indicators.z_momentum > self.cfg.mom_th {
                 return crate::strategy::Action::Buy { qty: 0.001 };
             }
         }
 
-        if score > self.cfg.entry_threshold {
+        // Score-based entry with trend confirmation
+        if score > self.cfg.entry_threshold && !in_downtrend {
             return crate::strategy::Action::Buy { qty: 0.001 };
         }
-        if score < -self.cfg.entry_threshold {
+        if score < -self.cfg.entry_threshold && !in_uptrend {
             return crate::strategy::Action::Sell { qty: 0.001 };
+        }
+        // Strong trend override: follow momentum regardless of score
+        if strong_trend && in_downtrend && market.indicators.z_momentum < -0.5 {
+            return crate::strategy::Action::Sell { qty: 0.001 };
+        }
+        if strong_trend && in_uptrend && market.indicators.z_momentum > 0.5 {
+            return crate::strategy::Action::Buy { qty: 0.001 };
         }
         crate::strategy::Action::Hold
     }
 }
 
 struct CarryOpportunistic {
+    #[allow(dead_code)]
     id: String,
     cfg: Config,
 }
@@ -535,6 +597,10 @@ struct CarryOpportunistic {
 impl Strategy for CarryOpportunistic {
     fn id(&self) -> &'static str {
         "carry-opportunistic"
+    }
+
+    fn aux_requirements(&self) -> crate::strategy::AuxRequirements {
+        crate::strategy::AuxRequirements::full()
     }
 
     fn update(&mut self, market: MarketView, state: &mut StrategyState) -> crate::strategy::Action {
@@ -584,5 +650,710 @@ impl Strategy for CarryOpportunistic {
         }
 
         crate::strategy::Action::Hold
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::strategy::{Action, MarketAux};
+
+    fn test_config() -> Config {
+        Config {
+            symbol: "BTCUSDT".to_string(),
+            candle_granularity: 300,
+            window: 100,
+            api_key: None,
+            api_secret: None,
+            binance_base: String::new(),
+            binance_fapi_base: String::new(),
+            kraken_base: String::new(),
+            sqlite_path: String::new(),
+            persist_every_secs: 300,
+            max_position_pct: 0.05,
+            max_daily_loss_pct: 0.02,
+            max_trades_per_day: 20,
+            cooldown_secs: 600,
+            vol_pause_mult: 2.5,
+            entry_threshold: 1.2,
+            exit_threshold: 0.4,
+            breakout_threshold: 2.0,
+            edge_hurdle: 0.003,
+            edge_scale: 0.0025,
+            ema_fast: 6,
+            ema_slow: 24,
+            vol_window: 30,
+            volume_window: 30,
+            take_profit: 0.006,
+            stop_loss: 0.004,
+            time_stop: 12,
+            funding_high: 0.0001,
+            funding_spread: 0.00005,
+            liq_score_th: 3.0,
+            depeg_th: 0.002,
+            vol_low: 0.6,
+            vol_high: 1.6,
+            mom_th: 0.4,
+            stretch_th: 0.8,
+            kill_file: String::new(),
+            wal_path: String::new(),
+            reconcile_secs: 60,
+            cancel_after_candles: 3,
+            reconcile_drift_pct: 0.02,
+            reconcile_drift_abs: 0.0005,
+            max_fill_slip_pct: 0.02,
+            fill_channel_capacity: 256,
+        }
+    }
+
+    // ==========================================================================
+    // Config tests
+    // ==========================================================================
+
+    #[test]
+    fn test_sleep_until_next_candle_boundary() {
+        let cfg = Config { candle_granularity: 300, ..test_config() };
+
+        // Exactly at boundary
+        assert_eq!(cfg.sleep_until_next_candle(300), 300);
+        assert_eq!(cfg.sleep_until_next_candle(600), 300);
+
+        // Just after boundary
+        assert_eq!(cfg.sleep_until_next_candle(301), 299);
+        assert_eq!(cfg.sleep_until_next_candle(599), 1);
+
+        // Middle of candle
+        assert_eq!(cfg.sleep_until_next_candle(450), 150);
+    }
+
+    #[test]
+    fn test_sleep_until_next_candle_zero() {
+        let cfg = Config { candle_granularity: 300, ..test_config() };
+        assert_eq!(cfg.sleep_until_next_candle(0), 300);
+    }
+
+    // ==========================================================================
+    // RingBuffer tests (via internal access)
+    // ==========================================================================
+
+    #[test]
+    fn test_ring_buffer_basic() {
+        let mut buf: RingBuffer<i32> = RingBuffer::new(3, 0);
+
+        // Push first value
+        assert!(buf.push(10).is_none());
+        assert_eq!(buf.last(), 10);
+
+        // Push more
+        buf.push(20);
+        buf.push(30);
+        assert_eq!(buf.last(), 30);
+
+        // Wrap around - should return old value
+        let old = buf.push(40);
+        assert_eq!(old, Some(10));
+        assert_eq!(buf.last(), 40);
+    }
+
+    #[test]
+    fn test_ring_buffer_wrap_around() {
+        let mut buf: RingBuffer<i32> = RingBuffer::new(2, 0);
+
+        buf.push(1);
+        buf.push(2);
+        assert_eq!(buf.last(), 2);
+
+        buf.push(3); // wraps
+        assert_eq!(buf.last(), 3);
+
+        buf.push(4); // wraps again
+        assert_eq!(buf.last(), 4);
+    }
+
+    // ==========================================================================
+    // IndicatorState tests
+    // ==========================================================================
+
+    #[test]
+    fn test_indicator_ema_initialization() {
+        let mut ind = IndicatorState::new();
+        let alpha_fast = 2.0 / 7.0; // ema_fast=6
+        let alpha_slow = 2.0 / 25.0; // ema_slow=24
+
+        // First update: EMAs should equal price
+        ind.update(100.0, 1000.0, alpha_fast, alpha_slow);
+        assert_eq!(ind.ema_fast, 100.0);
+        assert_eq!(ind.ema_slow, 100.0);
+    }
+
+    #[test]
+    fn test_indicator_ema_convergence() {
+        let mut ind = IndicatorState::new();
+        let alpha_fast = 2.0 / 7.0;
+        let alpha_slow = 2.0 / 25.0;
+
+        // Initialize
+        ind.update(100.0, 1000.0, alpha_fast, alpha_slow);
+
+        // Price rises to 110 for several bars
+        for _ in 0..50 {
+            ind.update(110.0, 1000.0, alpha_fast, alpha_slow);
+        }
+
+        // Fast EMA should converge faster than slow
+        assert!((ind.ema_fast - 110.0).abs() < 0.1);
+        assert!((ind.ema_slow - 110.0).abs() < 0.5);
+    }
+
+    #[test]
+    fn test_indicator_zscore_calculation() {
+        let mut ind = IndicatorState::new();
+        let alpha = 0.2;
+
+        // Feed stable data
+        for _ in 0..100 {
+            ind.update(100.0, 1000.0, alpha, alpha);
+        }
+
+        let snapshot = ind.snapshot();
+        // With stable data, z-scores should be near zero
+        assert!(snapshot.z_momentum.abs() < 1.0);
+        assert!(snapshot.z_vol.abs() < 1.0);
+    }
+
+    #[test]
+    fn test_indicator_vwap_calculation() {
+        let mut ind = IndicatorState::new();
+
+        // Volume-weighted: 100*1000 + 110*2000 = 320000, total vol = 3000
+        // VWAP = 320000/3000 = 106.67
+        ind.update(100.0, 1000.0, 0.2, 0.1);
+        ind.update(110.0, 2000.0, 0.2, 0.1);
+
+        let vwap = ind.sum_px_vol / ind.sum_vol;
+        assert!((vwap - 106.666).abs() < 0.01);
+    }
+
+    // ==========================================================================
+    // MarketState tests
+    // ==========================================================================
+
+    #[test]
+    fn test_market_state_on_candle() {
+        let cfg = test_config();
+        let mut market = MarketState::new(cfg.clone());
+
+        let candle = ExCandle { ts: 1000, o: 99.0, h: 101.0, l: 98.0, c: 100.0, v: 5000.0 };
+        market.on_candle(candle);
+
+        let view = market.view(&cfg.symbol);
+        assert_eq!(view.last.ts, 1000);
+        assert_eq!(view.last.c, 100.0);
+        assert_eq!(view.indicators.ema_fast, 100.0); // First candle initializes EMA
+    }
+
+    #[test]
+    fn test_market_state_view_missing_symbol() {
+        let cfg = test_config();
+        let market = MarketState::new(cfg);
+
+        // View for non-existent symbol should return defaults
+        let view = market.view("NONEXISTENT");
+        assert_eq!(view.last.ts, 0);
+        assert_eq!(view.last.c, 0.0);
+    }
+
+    #[test]
+    fn test_market_state_aux_update() {
+        let cfg = test_config();
+        let mut market = MarketState::new(cfg.clone());
+
+        let aux = MarketAux {
+            funding_rate: 0.0005,
+            borrow_rate: 0.0001,
+            liquidation_score: 2.0,
+            stable_depeg: -0.001,
+            fetch_ts: 1000,
+            has_funding: true,
+            has_borrow: true,
+            has_liquidations: true,
+            has_depeg: true,
+        };
+        market.update_aux(&cfg.symbol, aux);
+
+        let view = market.view(&cfg.symbol);
+        assert_eq!(view.aux.funding_rate, 0.0005);
+        assert!(view.aux.has_funding);
+    }
+
+    // ==========================================================================
+    // SimpleMomentum strategy tests
+    // ==========================================================================
+
+    #[test]
+    fn test_simple_momentum_start_delay() {
+        let cfg = test_config();
+        let mut strategy = SimpleMomentum { id: "test".to_string(), start_delay: 1000, cfg: cfg.clone() };
+        let mut state = StrategyState {
+            portfolio: PortfolioState { cash: 1000.0, position: 0.0, entry_price: 0.0, equity: 1000.0 },
+            metrics: MetricsState::default(),
+            last_trade_ts: 0,
+            last_loss_ts: 0,
+            trading_halted: false,
+            trades_today: 0,
+            trade_day: 0,
+            order_seq: 0,
+        };
+
+        // Create a view with ts < start_delay
+        let view = MarketView {
+            symbol: "BTCUSDT",
+            last: crate::strategy::Candle { ts: 500, o: 100.0, h: 101.0, l: 99.0, c: 100.0, v: 1000.0 },
+            indicators: IndicatorSnapshot::default(),
+            aux: MarketAux::default(),
+        };
+
+        let action = strategy.update(view, &mut state);
+        assert!(matches!(action, Action::Hold), "Should hold before start_delay");
+    }
+
+    #[test]
+    fn test_simple_momentum_vol_pause() {
+        let mut cfg = test_config();
+        cfg.vol_pause_mult = 2.0;
+        let mut strategy = SimpleMomentum { id: "test".to_string(), start_delay: 0, cfg: cfg.clone() };
+        let mut state = StrategyState {
+            portfolio: PortfolioState { cash: 1000.0, position: 0.0, entry_price: 0.0, equity: 1000.0 },
+            metrics: MetricsState::default(),
+            last_trade_ts: 0,
+            last_loss_ts: 0,
+            trading_halted: false,
+            trades_today: 0,
+            trade_day: 0,
+            order_seq: 0,
+        };
+
+        // High volatility ratio triggers pause
+        let view = MarketView {
+            symbol: "BTCUSDT",
+            last: crate::strategy::Candle { ts: 1000, o: 100.0, h: 101.0, l: 99.0, c: 100.0, v: 1000.0 },
+            indicators: IndicatorSnapshot { vol: 5.0, vol_mean: 2.0, ..Default::default() },
+            aux: MarketAux::default(),
+        };
+
+        let action = strategy.update(view, &mut state);
+        assert!(matches!(action, Action::Hold), "Should hold during vol spike");
+    }
+
+    #[test]
+    fn test_simple_momentum_funding_carry_short() {
+        let mut cfg = test_config();
+        cfg.funding_high = 0.0001;
+        cfg.funding_spread = 0.00005;
+        let mut strategy = SimpleMomentum { id: "test".to_string(), start_delay: 0, cfg: cfg.clone() };
+        let mut state = StrategyState {
+            portfolio: PortfolioState { cash: 1000.0, position: 0.0, entry_price: 0.0, equity: 1000.0 },
+            metrics: MetricsState::default(),
+            last_trade_ts: 0,
+            last_loss_ts: 0,
+            trading_halted: false,
+            trades_today: 0,
+            trade_day: 0,
+            order_seq: 0,
+        };
+
+        // High positive funding + low borrow = short opportunity
+        let view = MarketView {
+            symbol: "BTCUSDT",
+            last: crate::strategy::Candle { ts: 1000, o: 100.0, h: 101.0, l: 99.0, c: 100.0, v: 1000.0 },
+            indicators: IndicatorSnapshot {
+                z_momentum: 2.0,
+                z_vol: 1.0,
+                z_volume_spike: 1.0,
+                z_stretch: 0.0,
+                vol: 1.0,
+                vol_mean: 1.0,
+                ..Default::default()
+            },
+            aux: MarketAux {
+                funding_rate: 0.0005, // High positive funding
+                borrow_rate: 0.0001,  // Low borrow
+                has_funding: true,
+                has_borrow: true,
+                ..Default::default()
+            },
+        };
+
+        let action = strategy.update(view, &mut state);
+        assert!(matches!(action, Action::Sell { .. }), "Should short on high positive funding");
+    }
+
+    #[test]
+    fn test_simple_momentum_liquidation_cascade() {
+        let mut cfg = test_config();
+        cfg.liq_score_th = 3.0;
+        let mut strategy = SimpleMomentum { id: "test".to_string(), start_delay: 0, cfg: cfg.clone() };
+        let mut state = StrategyState {
+            portfolio: PortfolioState { cash: 1000.0, position: 0.0, entry_price: 0.0, equity: 1000.0 },
+            metrics: MetricsState::default(),
+            last_trade_ts: 0,
+            last_loss_ts: 0,
+            trading_halted: false,
+            trades_today: 0,
+            trade_day: 0,
+            order_seq: 0,
+        };
+
+        // High liquidation score + positive momentum = buy with cascade
+        let view = MarketView {
+            symbol: "BTCUSDT",
+            last: crate::strategy::Candle { ts: 1000, o: 100.0, h: 101.0, l: 99.0, c: 100.0, v: 1000.0 },
+            indicators: IndicatorSnapshot {
+                z_momentum: 1.5, // Positive momentum
+                z_vol: 1.0,
+                z_volume_spike: 1.0,
+                z_stretch: 0.0,
+                vol: 1.0,
+                vol_mean: 1.0,
+                ..Default::default()
+            },
+            aux: MarketAux {
+                liquidation_score: 5.0, // Above threshold
+                has_liquidations: true,
+                ..Default::default()
+            },
+        };
+
+        let action = strategy.update(view, &mut state);
+        assert!(matches!(action, Action::Buy { .. }), "Should buy on liq cascade with positive momentum");
+    }
+
+    #[test]
+    fn test_simple_momentum_take_profit() {
+        let mut cfg = test_config();
+        cfg.take_profit = 0.006;
+        cfg.edge_hurdle = 0.0; // Disable edge check for position exit test
+        let mut strategy = SimpleMomentum { id: "test".to_string(), start_delay: 0, cfg: cfg.clone() };
+        let mut state = StrategyState {
+            portfolio: PortfolioState {
+                cash: 900.0,
+                position: 0.1,
+                entry_price: 100.0,
+                equity: 1000.0,
+            },
+            metrics: MetricsState::default(),
+            last_trade_ts: 500,
+            last_loss_ts: 0,
+            trading_halted: false,
+            trades_today: 1,
+            trade_day: 0,
+            order_seq: 1,
+        };
+
+        // Price moved up 1% (above take_profit 0.6%)
+        let view = MarketView {
+            symbol: "BTCUSDT",
+            last: crate::strategy::Candle { ts: 1000, o: 100.0, h: 102.0, l: 100.0, c: 101.0, v: 1000.0 },
+            indicators: IndicatorSnapshot { z_momentum: 2.0, vol: 1.0, vol_mean: 1.0, ..Default::default() },
+            aux: MarketAux::default(),
+        };
+
+        let action = strategy.update(view, &mut state);
+        assert!(matches!(action, Action::Close), "Should close on take profit");
+    }
+
+    #[test]
+    fn test_simple_momentum_stop_loss() {
+        let mut cfg = test_config();
+        cfg.stop_loss = 0.004;
+        cfg.edge_hurdle = 0.0; // Disable edge check for position exit test
+        let mut strategy = SimpleMomentum { id: "test".to_string(), start_delay: 0, cfg: cfg.clone() };
+        let mut state = StrategyState {
+            portfolio: PortfolioState {
+                cash: 900.0,
+                position: 0.1,
+                entry_price: 100.0,
+                equity: 1000.0,
+            },
+            metrics: MetricsState::default(),
+            last_trade_ts: 500,
+            last_loss_ts: 0,
+            trading_halted: false,
+            trades_today: 1,
+            trade_day: 0,
+            order_seq: 1,
+        };
+
+        // Price moved down 0.5% (above stop_loss 0.4%)
+        let view = MarketView {
+            symbol: "BTCUSDT",
+            last: crate::strategy::Candle { ts: 1000, o: 100.0, h: 100.0, l: 99.0, c: 99.5, v: 1000.0 },
+            indicators: IndicatorSnapshot { z_momentum: 2.0, vol: 1.0, vol_mean: 1.0, ..Default::default() },
+            aux: MarketAux::default(),
+        };
+
+        let action = strategy.update(view, &mut state);
+        assert!(matches!(action, Action::Close), "Should close on stop loss");
+    }
+
+    #[test]
+    fn test_simple_momentum_time_stop() {
+        let mut cfg = test_config();
+        cfg.time_stop = 12; // 12 candles
+        cfg.candle_granularity = 300;
+        cfg.edge_hurdle = 0.0; // Disable edge check for position exit test
+        let mut strategy = SimpleMomentum { id: "test".to_string(), start_delay: 0, cfg: cfg.clone() };
+        let mut state = StrategyState {
+            portfolio: PortfolioState {
+                cash: 900.0,
+                position: 0.1,
+                entry_price: 100.0,
+                equity: 1000.0,
+            },
+            metrics: MetricsState::default(),
+            last_trade_ts: 0,
+            last_loss_ts: 0,
+            trading_halted: false,
+            trades_today: 1,
+            trade_day: 0,
+            order_seq: 1,
+        };
+
+        // 12 candles * 300 seconds = 3600 seconds elapsed
+        let view = MarketView {
+            symbol: "BTCUSDT",
+            last: crate::strategy::Candle { ts: 3601, o: 100.0, h: 100.5, l: 99.5, c: 100.0, v: 1000.0 },
+            indicators: IndicatorSnapshot { z_momentum: 2.0, vol: 1.0, vol_mean: 1.0, ..Default::default() },
+            aux: MarketAux::default(),
+        };
+
+        let action = strategy.update(view, &mut state);
+        assert!(matches!(action, Action::Close), "Should close on time stop");
+    }
+
+    // ==========================================================================
+    // CarryOpportunistic strategy tests
+    // ==========================================================================
+
+    #[test]
+    fn test_carry_opportunistic_funding_long() {
+        let mut cfg = test_config();
+        cfg.funding_high = 0.0001;
+        cfg.funding_spread = 0.00005;
+        let mut strategy = CarryOpportunistic { id: "carry-test".to_string(), cfg: cfg.clone() };
+        let mut state = StrategyState {
+            portfolio: PortfolioState { cash: 1000.0, position: 0.0, entry_price: 0.0, equity: 1000.0 },
+            metrics: MetricsState::default(),
+            last_trade_ts: 0,
+            last_loss_ts: 0,
+            trading_halted: false,
+            trades_today: 0,
+            trade_day: 0,
+            order_seq: 0,
+        };
+
+        // High negative funding + low borrow = long opportunity
+        let view = MarketView {
+            symbol: "BTCUSDT",
+            last: crate::strategy::Candle { ts: 1000, o: 100.0, h: 101.0, l: 99.0, c: 100.0, v: 1000.0 },
+            indicators: IndicatorSnapshot::default(),
+            aux: MarketAux {
+                funding_rate: -0.0005, // High negative funding
+                borrow_rate: 0.0001,   // Low borrow
+                has_funding: true,
+                has_borrow: true,
+                ..Default::default()
+            },
+        };
+
+        let action = strategy.update(view, &mut state);
+        assert!(matches!(action, Action::Buy { .. }), "Should long on high negative funding");
+    }
+
+    #[test]
+    fn test_carry_opportunistic_vol_exit() {
+        let mut cfg = test_config();
+        cfg.vol_pause_mult = 2.0;
+        let mut strategy = CarryOpportunistic { id: "carry-test".to_string(), cfg: cfg.clone() };
+        let mut state = StrategyState {
+            portfolio: PortfolioState {
+                cash: 900.0,
+                position: 0.1,
+                entry_price: 100.0,
+                equity: 1000.0,
+            },
+            metrics: MetricsState::default(),
+            last_trade_ts: 500,
+            last_loss_ts: 0,
+            trading_halted: false,
+            trades_today: 1,
+            trade_day: 0,
+            order_seq: 1,
+        };
+
+        // Vol spike while in position = close
+        let view = MarketView {
+            symbol: "BTCUSDT",
+            last: crate::strategy::Candle { ts: 1000, o: 100.0, h: 101.0, l: 99.0, c: 100.0, v: 1000.0 },
+            indicators: IndicatorSnapshot { vol: 5.0, vol_mean: 2.0, ..Default::default() },
+            aux: MarketAux::default(),
+        };
+
+        let action = strategy.update(view, &mut state);
+        assert!(matches!(action, Action::Close), "Should close on vol spike");
+    }
+
+    #[test]
+    fn test_carry_depeg_snapback() {
+        let mut cfg = test_config();
+        cfg.depeg_th = 0.002;
+        let mut strategy = CarryOpportunistic { id: "carry-test".to_string(), cfg: cfg.clone() };
+        let mut state = StrategyState {
+            portfolio: PortfolioState { cash: 1000.0, position: 0.0, entry_price: 0.0, equity: 1000.0 },
+            metrics: MetricsState::default(),
+            last_trade_ts: 0,
+            last_loss_ts: 0,
+            trading_halted: false,
+            trades_today: 0,
+            trade_day: 0,
+            order_seq: 0,
+        };
+
+        // Negative depeg (stablecoin below peg) = buy expecting snapback
+        let view = MarketView {
+            symbol: "BTCUSDT",
+            last: crate::strategy::Candle { ts: 1000, o: 100.0, h: 101.0, l: 99.0, c: 100.0, v: 1000.0 },
+            indicators: IndicatorSnapshot::default(),
+            aux: MarketAux {
+                stable_depeg: -0.005, // Below peg
+                has_depeg: true,
+                ..Default::default()
+            },
+        };
+
+        let action = strategy.update(view, &mut state);
+        assert!(matches!(action, Action::Buy { .. }), "Should buy on negative depeg");
+    }
+
+    // ==========================================================================
+    // StrategyInstance tests
+    // ==========================================================================
+
+    #[test]
+    fn test_strategy_instance_default_set_count() {
+        let cfg = test_config();
+        let strategies = StrategyInstance::build_default_set(cfg);
+        assert_eq!(strategies.len(), 3, "Default set should have 3 strategies");
+    }
+
+    #[test]
+    fn test_strategy_instance_churn_set_count() {
+        let cfg = test_config();
+        let strategies = StrategyInstance::build_churn_set(cfg);
+        assert_eq!(strategies.len(), 12, "Churn set should have 12 variants");
+    }
+
+    #[test]
+    fn test_strategy_instance_carry_set_count() {
+        let cfg = test_config();
+        let strategies = StrategyInstance::build_carry_event_set(cfg);
+        assert_eq!(strategies.len(), 3, "Carry set should have 3 strategies");
+    }
+
+    #[test]
+    fn test_strategy_instance_unique_ids() {
+        let cfg = test_config();
+        let strategies = StrategyInstance::build_churn_set(cfg);
+        let ids: Vec<_> = strategies.iter().map(|s| &s.id).collect();
+        let unique: std::collections::HashSet<_> = ids.iter().collect();
+        assert_eq!(ids.len(), unique.len(), "All strategy IDs should be unique");
+    }
+
+    #[test]
+    fn test_strategy_instance_initial_equity() {
+        let cfg = test_config();
+        let strategies = StrategyInstance::build_default_set(cfg);
+        for s in &strategies {
+            assert_eq!(s.state.portfolio.equity, 1000.0);
+            assert_eq!(s.state.portfolio.cash, 1000.0);
+            assert_eq!(s.state.portfolio.position, 0.0);
+        }
+    }
+
+    fn make_view(ts: u64, price: f64, indicators: IndicatorSnapshot, aux: MarketAux) -> MarketView<'static> {
+        let candle = crate::strategy::Candle {
+            ts,
+            o: price,
+            h: price,
+            l: price,
+            c: price,
+            v: 1000.0,
+        };
+        MarketView {
+            symbol: "BTCUSDT",
+            last: candle,
+            indicators,
+            aux,
+        }
+    }
+
+    fn default_state() -> StrategyState {
+        StrategyState {
+            portfolio: PortfolioState { cash: 1000.0, position: 0.0, entry_price: 0.0, equity: 1000.0 },
+            metrics: MetricsState::default(),
+            last_trade_ts: 0,
+            last_loss_ts: 0,
+            trading_halted: false,
+            trades_today: 0,
+            trade_day: 0,
+            order_seq: 0,
+        }
+    }
+
+    #[test]
+    fn test_simple_momentum_funding_carry_signal() {
+        let cfg = test_config();
+        let mut strat = SimpleMomentum { id: "mom".to_string(), start_delay: 0, cfg };
+        let mut state = default_state();
+        let indicators = IndicatorSnapshot {
+            z_momentum: 2.0,
+            ..IndicatorSnapshot::default()
+        };
+        let aux = MarketAux {
+            funding_rate: 0.001,
+            borrow_rate: 0.0,
+            liquidation_score: 0.0,
+            stable_depeg: 0.0,
+            fetch_ts: 1000,
+            has_funding: true,
+            has_borrow: true,
+            has_liquidations: false,
+            has_depeg: false,
+        };
+        let view = make_view(1000, 30000.0, indicators, aux);
+        let action = strat.update(view, &mut state);
+        assert!(matches!(action, Action::Sell { .. }));
+    }
+
+    #[test]
+    fn test_carry_opportunistic_depeg_signal() {
+        let cfg = test_config();
+        let mut strat = CarryOpportunistic { id: "carry".to_string(), cfg };
+        let mut state = default_state();
+        let indicators = IndicatorSnapshot::default();
+        let aux = MarketAux {
+            funding_rate: 0.0,
+            borrow_rate: 0.0,
+            liquidation_score: 0.0,
+            stable_depeg: -0.01,
+            fetch_ts: 1000,
+            has_funding: false,
+            has_borrow: false,
+            has_liquidations: false,
+            has_depeg: true,
+        };
+        let view = make_view(1000, 30000.0, indicators, aux);
+        let action = strat.update(view, &mut state);
+        assert!(matches!(action, Action::Buy { .. }));
     }
 }

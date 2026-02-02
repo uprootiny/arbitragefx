@@ -18,6 +18,10 @@ pub enum WalEntry {
     PlaceOrder {
         ts: u64,
         intent_id: String,
+        #[serde(default)]
+        strategy_id: Option<String>,
+        #[serde(default)]
+        client_order_id: Option<String>,
         params_hash: String,
         symbol: String,
         side: String,
@@ -71,6 +75,8 @@ pub struct RecoveryState {
 #[derive(Debug, Clone)]
 pub struct PendingOrder {
     pub intent_id: String,
+    pub strategy_id: Option<String>,
+    pub client_order_id: Option<String>,
     pub symbol: String,
     pub side: String,
     pub qty: f64,
@@ -139,7 +145,50 @@ impl Wal {
         let mut completed_intents: std::collections::HashSet<String> = std::collections::HashSet::new();
 
         for line in lines {
-            // Try to parse as generic JSON first
+            if let Ok(entry) = serde_json::from_str::<WalEntry>(&line) {
+                match entry {
+                    WalEntry::PlaceOrder { ts, intent_id, strategy_id, client_order_id, symbol, side, qty, .. } => {
+                        state.pending_orders.push(PendingOrder {
+                            intent_id,
+                            strategy_id,
+                            client_order_id,
+                            symbol,
+                            side,
+                            qty,
+                            ts,
+                        });
+                    }
+                    WalEntry::Fill { ts, intent_id, price, qty, fee, .. } => {
+                        completed_intents.insert(intent_id.clone());
+                        state.fills_since_snapshot.push(FillData {
+                            ts,
+                            intent_id,
+                            price,
+                            qty,
+                            fee,
+                        });
+                    }
+                    WalEntry::Cancel { intent_id, .. } => {
+                        completed_intents.insert(intent_id);
+                    }
+                    WalEntry::Snapshot { ts, strategy_id, cash, position, entry_price, equity, pnl } => {
+                        let snap = SnapshotData {
+                            ts,
+                            strategy_id: strategy_id.clone(),
+                            cash,
+                            position,
+                            entry_price,
+                            equity,
+                            pnl,
+                        };
+                        state.snapshots_by_strategy.insert(strategy_id, snap.clone());
+                        state.last_snapshot = Some(snap);
+                        state.fills_since_snapshot.clear();
+                    }
+                }
+                continue;
+            }
+
             let parsed: Result<Value, _> = serde_json::from_str(&line);
             if let Ok(json) = parsed {
                 let operation = json.get("operation").and_then(|v| v.as_str());
@@ -153,8 +202,18 @@ impl Wal {
                             json.get("qty").and_then(|v| v.as_f64()),
                             json.get("ts").and_then(|v| v.as_u64()),
                         ) {
+                            let strategy_id = json
+                                .get("strategy_id")
+                                .and_then(|v| v.as_str())
+                                .map(|v| v.to_string());
+                            let client_order_id = json
+                                .get("client_order_id")
+                                .and_then(|v| v.as_str())
+                                .map(|v| v.to_string());
                             state.pending_orders.push(PendingOrder {
                                 intent_id: intent_id.to_string(),
+                                strategy_id,
+                                client_order_id,
                                 symbol: symbol.to_string(),
                                 side: side.to_string(),
                                 qty,
@@ -212,11 +271,8 @@ impl Wal {
                                 equity,
                                 pnl,
                             };
-                            // Store per-strategy (new correct behavior)
                             state.snapshots_by_strategy.insert(strategy_id.to_string(), snap.clone());
-                            // Also set last_snapshot for backwards compat (deprecated)
                             state.last_snapshot = Some(snap);
-                            // Clear fills before snapshot
                             state.fills_since_snapshot.clear();
                         }
                     }
@@ -259,6 +315,44 @@ impl Wal {
 mod tests {
     use super::*;
     use std::fs;
+    use std::hash::{Hash, Hasher};
+    use std::collections::hash_map::DefaultHasher;
+
+    fn recovery_hash(state: &RecoveryState) -> u64 {
+        let mut h = DefaultHasher::new();
+        let mut pending = state.pending_orders.clone();
+        pending.sort_by(|a, b| a.intent_id.cmp(&b.intent_id));
+        for p in pending {
+            p.intent_id.hash(&mut h);
+            p.strategy_id.hash(&mut h);
+            p.client_order_id.hash(&mut h);
+            p.symbol.hash(&mut h);
+            p.side.hash(&mut h);
+            ((p.qty * 1e8) as i64).hash(&mut h);
+            p.ts.hash(&mut h);
+        }
+        let mut snaps: Vec<_> = state.snapshots_by_strategy.values().cloned().collect();
+        snaps.sort_by(|a, b| a.strategy_id.cmp(&b.strategy_id));
+        for s in snaps {
+            s.strategy_id.hash(&mut h);
+            s.ts.hash(&mut h);
+            ((s.cash * 1e8) as i64).hash(&mut h);
+            ((s.position * 1e8) as i64).hash(&mut h);
+            ((s.entry_price * 1e8) as i64).hash(&mut h);
+            ((s.equity * 1e8) as i64).hash(&mut h);
+            ((s.pnl * 1e8) as i64).hash(&mut h);
+        }
+        let mut fills = state.fills_since_snapshot.clone();
+        fills.sort_by(|a, b| a.ts.cmp(&b.ts));
+        for f in fills {
+            f.intent_id.hash(&mut h);
+            f.ts.hash(&mut h);
+            ((f.price * 1e8) as i64).hash(&mut h);
+            ((f.qty * 1e8) as i64).hash(&mut h);
+            ((f.fee * 1e8) as i64).hash(&mut h);
+        }
+        h.finish()
+    }
 
     #[test]
     fn test_wal_roundtrip() {
@@ -270,6 +364,8 @@ mod tests {
             wal.append_entry(&WalEntry::PlaceOrder {
                 ts: 1234567890,
                 intent_id: "I-1".to_string(),
+                strategy_id: None,
+                client_order_id: None,
                 params_hash: "abc123".to_string(),
                 symbol: "BTCUSDT".to_string(),
                 side: "BUY".to_string(),
@@ -421,6 +517,8 @@ mod tests {
             wal.append_entry(&WalEntry::PlaceOrder {
                 ts: 1000,
                 intent_id: "I-pending".to_string(),
+                strategy_id: None,
+                client_order_id: None,
                 params_hash: "pending".to_string(),
                 symbol: "BTCUSDT".to_string(),
                 side: "BUY".to_string(),
@@ -432,6 +530,8 @@ mod tests {
             wal.append_entry(&WalEntry::PlaceOrder {
                 ts: 1001,
                 intent_id: "I-filled".to_string(),
+                strategy_id: None,
+                client_order_id: None,
                 params_hash: "filled".to_string(),
                 symbol: "BTCUSDT".to_string(),
                 side: "SELL".to_string(),
@@ -455,6 +555,51 @@ mod tests {
         // Only unfilled order should be pending
         assert_eq!(state.pending_orders.len(), 1);
         assert_eq!(state.pending_orders[0].intent_id, "I-pending");
+
+        let _ = fs::remove_file(path);
+    }
+
+    #[test]
+    fn test_recovery_hash_determinism() {
+        let path = "/tmp/test_wal_hash.log";
+        let _ = fs::remove_file(path);
+
+        {
+            let mut wal = Wal::open(path).unwrap();
+            wal.append_entry(&WalEntry::PlaceOrder {
+                ts: 1000,
+                intent_id: "I-1".to_string(),
+                strategy_id: Some("s-1".to_string()),
+                client_order_id: Some("CID-1".to_string()),
+                params_hash: "h1".to_string(),
+                symbol: "BTCUSDT".to_string(),
+                side: "BUY".to_string(),
+                qty: 0.1,
+                fsync: true,
+            }).unwrap();
+            wal.append_entry(&WalEntry::Snapshot {
+                ts: 1000,
+                strategy_id: "s-1".to_string(),
+                cash: 1000.0,
+                position: 0.1,
+                entry_price: 50000.0,
+                equity: 1005.0,
+                pnl: 5.0,
+            }).unwrap();
+            wal.append_entry(&WalEntry::Fill {
+                ts: 1001,
+                intent_id: "I-1".to_string(),
+                params_hash: "h1".to_string(),
+                price: 50000.0,
+                qty: 0.1,
+                fee: 0.01,
+                fsync: true,
+            }).unwrap();
+        }
+
+        let state1 = Wal::recover(path).unwrap();
+        let state2 = Wal::recover(path).unwrap();
+        assert_eq!(recovery_hash(&state1), recovery_hash(&state2));
 
         let _ = fs::remove_file(path);
     }

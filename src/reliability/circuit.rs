@@ -33,3 +33,31 @@ impl CircuitBreaker {
         matches!(self.state, CircuitState::Closed | CircuitState::HalfOpen)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_circuit_opens_on_threshold() {
+        let mut cb = CircuitBreaker::new(3);
+        assert!(cb.allow());
+        cb.record_failure();
+        cb.record_failure();
+        assert!(cb.allow());
+        cb.record_failure();
+        assert!(!cb.allow());
+        assert!(matches!(cb.state, CircuitState::Open));
+    }
+
+    #[test]
+    fn test_circuit_resets_on_success() {
+        let mut cb = CircuitBreaker::new(2);
+        cb.record_failure();
+        cb.record_failure();
+        assert!(!cb.allow());
+        cb.record_success();
+        assert!(cb.allow());
+        assert!(matches!(cb.state, CircuitState::Closed));
+    }
+}

@@ -54,6 +54,10 @@ impl AuxRequirements {
     pub fn full() -> Self {
         Self { needs_funding: true, needs_borrow: true, needs_liquidations: true, needs_depeg: true }
     }
+
+    pub fn is_empty(&self) -> bool {
+        !self.needs_funding && !self.needs_borrow && !self.needs_liquidations && !self.needs_depeg
+    }
 }
 
 impl MarketAux {
@@ -143,8 +147,10 @@ impl PortfolioState {
             realized = (fill.price - self.entry_price) * close_qty * dir;
         }
 
-        let cost = fill.price * fill.qty.abs();
-        self.cash -= cost + fill.fee;
+        // Cash flow: buy (qty>0) costs money, sell (qty<0) receives money
+        // cash -= price * qty for the position change
+        // Always subtract fees
+        self.cash -= fill.price * fill.qty + fill.fee;
         self.position = new_pos;
 
         // Update entry price based on add/reduce/flip
@@ -194,6 +200,35 @@ pub struct MetricsState {
     pub n: u64,
     pub mean: f64,
     pub m2: f64,
+    // Expectancy tracking
+    pub total_win_amount: f64,
+    pub total_loss_amount: f64,
+}
+
+impl MetricsState {
+    /// Calculate expectancy per trade
+    pub fn expectancy(&self) -> f64 {
+        let total = self.wins + self.losses;
+        if total == 0 {
+            return 0.0;
+        }
+        let win_rate = self.wins as f64 / total as f64;
+        let avg_win = if self.wins > 0 { self.total_win_amount / self.wins as f64 } else { 0.0 };
+        let avg_loss = if self.losses > 0 { self.total_loss_amount / self.losses as f64 } else { 0.0 };
+        (win_rate * avg_win) - ((1.0 - win_rate) * avg_loss)
+    }
+
+    /// Record a trade outcome
+    pub fn record_trade(&mut self, pnl: f64) {
+        if pnl > 0.0 {
+            self.wins += 1;
+            self.total_win_amount += pnl;
+        } else if pnl < 0.0 {
+            self.losses += 1;
+            self.total_loss_amount += pnl.abs();
+        }
+        self.pnl += pnl;
+    }
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -215,6 +250,10 @@ pub trait Strategy {
     fn id(&self) -> &'static str;
 
     fn update(&mut self, market: MarketView, state: &mut StrategyState) -> Action;
+
+    fn aux_requirements(&self) -> AuxRequirements {
+        AuxRequirements::default()
+    }
 }
 
 #[cfg(test)]
