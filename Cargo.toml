@@ -20,3 +20,4 @@ base64 = "0.22"
 tokio-tungstenite = { version = "0.21", features = ["rustls-tls-webpki-roots"] }
 futures-util = "0.3"
 url = "2"
+num_cpus = "1.16"

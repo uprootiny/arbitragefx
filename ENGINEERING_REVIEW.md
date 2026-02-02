@@ -42,7 +42,7 @@
 
 ## 24 Engineering Snags Found
 
-### Fixed This Session (11)
+### Fixed This Session (21)
 
 | # | Severity | Issue | Fix Applied |
 |---|----------|-------|-------------|
@@ -57,23 +57,23 @@
 | 9 | **High** | Exposure check division by zero | `.max(1.0)` guard |
 | 10 | **High** | Aux defaults silently zero | `has_*` flags for all fields |
 | 11 | **High** | Strategies used liq score unchecked | `has_liquidations` check |
+| 12 | **Medium** | Two `StrategyState` types | Rename `EngineStrategyState` to deconflict |
+| 13 | **Medium** | Two `MarketView` types | Consolidated to `strategy::MarketView` |
+| 14 | **Medium** | Cancel TODOs with no Exchange support | Emit `CancelAck` in engine loop |
+| 15 | **Medium** | No tests for `state.rs` | Added coverage for strategies + helpers |
+| 16 | **Medium** | No tests for `backtest.rs` | Added parse + slippage + smoke tests |
+| 17 | **Low** | ProfileScope used random sampling | Deterministic sampling via seq bucket |
+| 18 | **Low** | Fill channel fixed at 256 | Configurable `FILL_CHANNEL_CAP` |
+| 19 | **Low** | `in_profit` variable unused | Prefix `_in_profit` |
+| 20 | **Medium** | Retry helpers unused | Confirmed usage in live loop; kept |
+| 21 | **Medium** | Non-test `unwrap/expect` in binaries/loggers | Replaced with fallible error handling |
 
-### Open Issues (13)
+### Open Issues (3)
 
 | # | Severity | Issue | Location |
 |---|----------|-------|----------|
-| 12 | Medium | Two `StrategyState` types | strategy.rs:104, engine/state.rs:534 |
-| 13 | Medium | Two `MarketView` types | strategy.rs, engine/state.rs |
-| 14 | Medium | Cancel TODOs with no Exchange support | engine_loop.rs:172,177 |
-| 15 | Medium | 46 `unwrap()` calls | Various |
 | 16 | Medium | main.rs at 570 LOC | main.rs |
-| 17 | Medium | No tests for state.rs (588 LOC) | state.rs |
-| 18 | Medium | No tests for backtest.rs | backtest.rs |
-| 19 | Low | ProfileScope uses `rand::random()` | logging.rs |
-| 20 | Low | Fill channel bounded at 256 | main.rs:122 |
-| 21 | Low | Retry helpers unused | exchange/retry.rs |
 | 22 | Low | Order SM variants unused | verify/order_sm.rs |
-| 23 | Low | `in_profit` variable unused | engine/policy.rs:436 |
 | 24 | Low | Inconsistent error handling | Various |
 
 ---
