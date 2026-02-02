@@ -40,3 +40,9 @@ coverage/
 *.pem
 *.key
 credentials.json
+
+# Build artifacts
+.build/
+out/
+target-local/
+data/splits/
