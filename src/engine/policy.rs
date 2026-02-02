@@ -433,7 +433,7 @@ impl Policy for MeanReversionPolicy {
             }
         } else {
             // Have position - look for exit
-            let in_profit = (pos > 0.0 && z > -self.exit_z) || (pos < 0.0 && z < self.exit_z);
+            let _in_profit = (pos > 0.0 && z > -self.exit_z) || (pos < 0.0 && z < self.exit_z);
 
             if z.abs() < self.exit_z {
                 // Mean reverted - take profit

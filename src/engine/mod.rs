@@ -35,3 +35,4 @@ pub mod narrative_detector;
 pub mod experiment_registry;
 pub mod drift_tracker;
 pub mod policy;
+pub mod logging;

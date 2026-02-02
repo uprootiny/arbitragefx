@@ -1,3 +1,4 @@
+mod engine;
 mod exchange;
 mod metrics;
 mod risk;
@@ -9,6 +10,8 @@ mod reliability;
 mod adapter;
 mod feed;
 mod verify;
+mod reconcile;
+mod live_ops;
 
 use anyhow::Result;
 use chrono::Utc;
@@ -29,6 +32,8 @@ use strategy::{Action, Strategy};
 use tokio::time::{sleep, Duration};
 use tokio::sync::mpsc;
 use std::collections::HashMap;
+use live_ops::PendingMeta;
+use crate::engine::drift_tracker::DriftTracker;
 
 fn now_ts() -> u64 {
     Utc::now().timestamp() as u64
@@ -43,7 +48,7 @@ async fn main() -> Result<()> {
     store.init()?;
     let mut wal = Wal::open(&cfg.wal_path)?;
     let mut order_book = OrderBook::new();
-    let mut pending_by_client: HashMap<String, String> = HashMap::new();
+    let mut pending_by_client: HashMap<String, PendingMeta> = HashMap::new();
     let mut circuit = CircuitBreaker::new(5);
     let aux_fetcher = AuxDataFetcher::new();
 
@@ -79,6 +84,21 @@ async fn main() -> Result<()> {
                 ("count", v_num(recovery.pending_orders.len() as f64)),
             ]),
         );
+    }
+    for pending in &recovery.pending_orders {
+        if let (Some(client_id), Some(strategy_id)) = (&pending.client_order_id, &pending.strategy_id)
+        {
+            pending_by_client.insert(
+                client_id.clone(),
+                PendingMeta {
+                    strategy_id: strategy_id.clone(),
+                    intent_id: pending.intent_id.clone(),
+                    placed_ts: pending.ts,
+                    order_id: None,
+                },
+            );
+            order_book.ensure(client_id, pending.qty);
+        }
     }
 
     let mut strategies = StrategyInstance::build_default_set(cfg.clone());
@@ -122,7 +142,9 @@ async fn main() -> Result<()> {
     let mut risk = RiskEngine::new(cfg.clone());
     let mut metrics = MetricsEngine::new();
     let retry_cfg = RetryConfig::default();
-    let (fill_tx, mut fill_rx) = mpsc::channel(256);
+    let mut drift_tracker = DriftTracker::default_windows();
+    let mut prev_price: Option<f64> = None;
+    let (fill_tx, mut fill_rx) = mpsc::channel(cfg.fill_channel_capacity);
     if live_adapter {
         if let (Some(key), Some(secret)) = (&cfg.api_key, &cfg.api_secret) {
             let base = cfg.binance_base.clone();
@@ -150,65 +172,26 @@ async fn main() -> Result<()> {
         }
     }
 
+    let mut last_reconcile_ts: u64 = 0;
+
     loop {
         let start = now_ts();
 
         let _loop_prof = ProfileScope::new("profile", "main_loop");
 
-        while let Ok(fill) = fill_rx.try_recv() {
-            let _fill_prof = ProfileScope::new("profile", "fill_apply");
-            if let Some(strategy_id) = pending_by_client.get(&fill.client_id).cloned() {
-                if let Some(inst) = strategies.iter_mut().find(|s| s.id == strategy_id) {
-                    if let Ok((prev, next)) = order_book.apply(
-                        &fill.client_id,
-                        crate::verify::order_sm::Event::Fill {
-                            fill_id: fill.fill_id.clone(),
-                            qty: fill.qty,
-                            price: fill.price,
-                        },
-                    ) {
-                        json_log(
-                            "order_state",
-                            obj(&[
-                                ("order_id", v_str(&fill.client_id)),
-                                ("prev_state", v_str(&format!("{:?}", prev))),
-                                ("new_state", v_str(&format!("{:?}", next))),
-                                ("fill_qty", v_num(fill.qty)),
-                                ("price", v_num(fill.price)),
-                                ("source", v_str("live_fill")),
-                            ]),
-                        );
-                        if next == crate::verify::order_sm::OrderState::Filled {
-                            pending_by_client.remove(&fill.client_id);
-                        }
-                    }
-
-                    let signed_qty = if fill.side == "BUY" { fill.qty } else { -fill.qty };
-                    let realized = inst.state.portfolio.apply_fill(state::Fill {
-                        price: fill.price,
-                        qty: signed_qty,
-                        fee: fill.fee,
-                        ts: fill.ts,
-                    });
-                    inst.state.metrics.pnl += realized;
-                    if realized > 0.0 {
-                        inst.state.metrics.wins += 1;
-                        circuit.record_success();
-                    } else if realized < 0.0 {
-                        inst.state.metrics.losses += 1;
-                        inst.state.last_loss_ts = fill.ts;
-                        circuit.record_failure();
-                    } else {
-                        circuit.record_success();
-                    }
-                    inst.state.last_trade_ts = fill.ts;
-                    let day = fill.ts / 86_400;
-                    if inst.state.trade_day != day {
-                        inst.state.trade_day = day;
-                        inst.state.trades_today = 0;
-                    }
-                    inst.state.trades_today += 1;
-                }
+        let mut halt_on_slip = live_ops::process_fills(
+            &mut fill_rx,
+            &mut pending_by_client,
+            &mut strategies,
+            &mut order_book,
+            &mut wal,
+            &mut circuit,
+            &market,
+            &cfg,
+        );
+        if halt_on_slip {
+            for s in strategies.iter_mut() {
+                s.state.trading_halted = true;
             }
         }
 
@@ -222,14 +205,47 @@ async fn main() -> Result<()> {
 
         // Fetch comprehensive auxiliary data (funding, borrow, liquidations, depeg)
         let _aux_prof = ProfileScope::new("profile", "fetch_aux");
-        let aux = aux_fetcher.fetch(&cfg.symbol).await.unwrap_or_default();
-        market.update_aux(&cfg.symbol, aux);
+        match aux_fetcher.fetch(&cfg.symbol).await {
+            Ok(aux) => {
+                market.update_aux(&cfg.symbol, aux);
+            }
+            Err(err) => {
+                json_log(
+                    "aux_fetch",
+                    obj(&[
+                        ("status", v_str("error")),
+                        ("error", v_str(&err.to_string())),
+                    ]),
+                );
+            }
+        }
 
         // Update liquidation rolling window
         let _liq_prof = ProfileScope::new("profile", "fetch_liquidations");
         let _ = aux_fetcher.fetch_recent_liquidations(&cfg.symbol).await;
 
         let view = market.view(&cfg.symbol);
+        let returns = match prev_price {
+            Some(prev) if prev > 0.0 => (view.last.c / prev) - 1.0,
+            _ => 0.0,
+        };
+        drift_tracker.update_from_market(
+            view.indicators.vol,
+            returns,
+            0.0,
+            view.aux.funding_rate,
+            view.indicators.z_momentum,
+            start,
+        );
+        let drift_severity = drift_tracker.compute_overall();
+        prev_price = Some(view.last.c);
+        json_log(
+            "drift",
+            obj(&[
+                ("severity", v_str(&format!("{:?}", drift_severity))),
+                ("returns", v_num(returns)),
+            ]),
+        );
         for evt in feed::monitor::scan(view) {
             json_log(
                 "flow_feed",
@@ -253,7 +269,14 @@ async fn main() -> Result<()> {
                 );
                 continue;
             }
-            if !view.aux.is_valid_for_trading(start, cfg.candle_granularity.saturating_mul(2)) {
+            let reqs = inst.strategy.aux_requirements();
+            if !reqs.is_empty()
+                && !view.aux.is_valid_for_strategy(
+                    start,
+                    cfg.candle_granularity.saturating_mul(2),
+                    &reqs,
+                )
+            {
                 json_log(
                     "risk_guard",
                     obj(&[
@@ -269,7 +292,13 @@ async fn main() -> Result<()> {
                 "strategy_update",
                 &[("strategy", v_str(&inst.id))],
             );
-            let action = inst.strategy.update(view, &mut inst.state);
+            let mut action = inst.strategy.update(view, &mut inst.state);
+            if drift_severity.should_halt() {
+                inst.state.trading_halted = true;
+            }
+            if drift_severity.should_close() && inst.state.portfolio.position.abs() > 1e-9 {
+                action = Action::Close;
+            }
             // FIXED: Use current price for MTM risk calculations
             let _risk_prof = ProfileScope::with_context(
                 "profile",
@@ -341,7 +370,15 @@ async fn main() -> Result<()> {
                     continue;
                 }
                 order_book.ensure(&client_id, order_qty);
-                pending_by_client.insert(client_id.clone(), inst.id.clone());
+                pending_by_client.insert(
+                    client_id.clone(),
+                    PendingMeta {
+                        strategy_id: inst.id.clone(),
+                        intent_id: intent_id.clone(),
+                        placed_ts: start,
+                        order_id: None,
+                    },
+                );
                 if let Ok((prev, next)) =
                     order_book.apply(&client_id, crate::verify::order_sm::Event::Submit)
                 {
@@ -364,18 +401,28 @@ async fn main() -> Result<()> {
                         ("fsync", v_str("true")),
                     ]),
                 );
-                let _ = wal.append_json(&json!({
-                    "ts": logging::ts_now(),
-                    "module": "wal",
-                    "intent_id": intent_id,
-                    "strategy_id": inst.id,
-                    "operation": "place_order",
-                    "params_hash": params_hash(&client_id),
-                    "symbol": cfg.symbol,
-                    "side": match guarded { Action::Buy { .. } => "BUY", _ => "SELL" },
-                    "qty": order_qty,
-                    "fsync": true
-                }));
+                let _ = wal.append_entry(&crate::reliability::wal::WalEntry::PlaceOrder {
+                    ts: state::now_ts(),
+                    intent_id: intent_id.clone(),
+                    strategy_id: Some(inst.id.clone()),
+                    client_order_id: Some(client_id.clone()),
+                    params_hash: params_hash(&client_id),
+                    symbol: cfg.symbol.clone(),
+                    side: match guarded {
+                        Action::Buy { .. } => "BUY".to_string(),
+                        Action::Sell { .. } => "SELL".to_string(),
+                        Action::Close => {
+                            if inst.state.portfolio.position >= 0.0 {
+                                "SELL".to_string()
+                            } else {
+                                "BUY".to_string()
+                            }
+                        }
+                        Action::Hold => "HOLD".to_string(),
+                    },
+                    qty: order_qty,
+                    fsync: true,
+                });
 
                 json_log(
                     "exec_wrapper",
@@ -388,19 +435,37 @@ async fn main() -> Result<()> {
                         ("status", v_str("request_sent")),
                     ]),
                 );
+                let side = match guarded {
+                    Action::Buy { .. } => types::Side::Buy,
+                    Action::Sell { .. } => types::Side::Sell,
+                    Action::Close => {
+                        if inst.state.portfolio.position >= 0.0 {
+                            types::Side::Sell
+                        } else {
+                            types::Side::Buy
+                        }
+                    }
+                    Action::Hold => types::Side::Sell,
+                };
+                let order_type = if live_adapter {
+                    types::OrderType::Market
+                } else {
+                    types::OrderType::Limit
+                };
+                let price = if live_adapter { None } else { Some(view.last.c) };
                 let resp = adapter.place_order(types::OrderRequest {
                     symbol: cfg.symbol.clone(),
-                    side: match guarded {
-                        Action::Buy { .. } => types::Side::Buy,
-                        _ => types::Side::Sell,
-                    },
-                    order_type: types::OrderType::Limit,
-                    price: Some(view.last.c),
+                    side,
+                    order_type,
+                    price,
                     qty: order_qty,
                     client_id: client_id.clone(),
                 });
                 match resp {
                     Ok(resp) => {
+                        if let Some(meta) = pending_by_client.get_mut(&client_id) {
+                            meta.order_id = Some(resp.order_id.clone());
+                        }
                         if let Ok((prev, next)) = order_book.apply(
                             &client_id,
                             crate::verify::order_sm::Event::Ack { order_id: resp.order_id.clone() },
@@ -454,87 +519,102 @@ async fn main() -> Result<()> {
                             ("status", v_str("pending_fill")),
                         ]),
                     );
-                    continue;
                 }
 
                 // Execute with retry (paper execution path only)
-                let _exec_prof = ProfileScope::new("profile", "execute_order");
-                let fill = retry_async(&retry_cfg, "execute_order", || {
-                    exchange.execute(&cfg.symbol, guarded, &inst.state)
-                }).await?;
+                if !live_adapter {
+                    let _exec_prof = ProfileScope::new("profile", "execute_order");
+                    let fill = retry_async(&retry_cfg, "execute_order", || {
+                        exchange.execute(&cfg.symbol, guarded, &inst.state)
+                    }).await?;
 
-                if let Ok((prev, next)) = order_book.apply(
-                    &client_id,
-                    crate::verify::order_sm::Event::Fill {
-                        fill_id: format!("fill-{}", client_id),
-                        qty: fill.qty,
+                    if view.last.c > 0.0 {
+                        let slip_pct = ((fill.price - view.last.c).abs()) / view.last.c;
+                        if slip_pct > cfg.max_fill_slip_pct {
+                            halt_on_slip = true;
+                            json_log(
+                                "risk_guard",
+                                obj(&[
+                                    ("check", v_str("fill_slippage")),
+                                    ("result", v_str("halt")),
+                                    ("slip_pct", v_num(slip_pct)),
+                                    ("threshold", v_num(cfg.max_fill_slip_pct)),
+                                ]),
+                            );
+                        }
+                    }
+                    if let Ok((prev, next)) = order_book.apply(
+                        &client_id,
+                        crate::verify::order_sm::Event::Fill {
+                            fill_id: format!("fill-{}", client_id),
+                            qty: fill.qty,
+                            price: fill.price,
+                        },
+                    ) {
+                        json_log(
+                            "order_state",
+                            obj(&[
+                                ("order_id", v_str(&client_id)),
+                                ("prev_state", v_str(&format!("{:?}", prev))),
+                                ("new_state", v_str(&format!("{:?}", next))),
+                                ("fill_qty", v_num(fill.qty)),
+                                ("price", v_num(fill.price)),
+                                ("source", v_str("trade_stream")),
+                            ]),
+                        );
+                    }
+                    let _ = wal.append_entry(&crate::reliability::wal::WalEntry::Fill {
+                        ts: state::now_ts(),
+                        intent_id: intent_id.clone(),
+                        params_hash: params_hash(&client_id),
                         price: fill.price,
-                    },
-                ) {
+                        qty: fill.qty,
+                        fee: fill.fee,
+                        fsync: true,
+                    });
+                    let realized = inst.state.portfolio.apply_fill(fill);
+                    inst.state.metrics.pnl += realized;
+                    if realized > 0.0 {
+                        inst.state.metrics.wins += 1;
+                        circuit.record_success();
+                    } else if realized < 0.0 {
+                        inst.state.metrics.losses += 1;
+                        inst.state.last_loss_ts = fill.ts;
+                        circuit.record_failure();
+                    } else {
+                        circuit.record_success();
+                    }
+                    inst.state.last_trade_ts = fill.ts;
+                    let day = fill.ts / 86_400;
+                    if inst.state.trade_day != day {
+                        inst.state.trade_day = day;
+                        inst.state.trades_today = 0;
+                    }
+                    inst.state.trades_today += 1;
                     json_log(
-                        "order_state",
+                        "position_agg",
                         obj(&[
-                            ("order_id", v_str(&client_id)),
-                            ("prev_state", v_str(&format!("{:?}", prev))),
-                            ("new_state", v_str(&format!("{:?}", next))),
-                            ("fill_qty", v_num(fill.qty)),
-                            ("price", v_num(fill.price)),
-                            ("source", v_str("trade_stream")),
+                            ("asset", v_str(&cfg.symbol)),
+                            ("spot", v_num(inst.state.portfolio.position)),
+                            ("perp", v_num(0.0)),
+                            ("net", v_num(inst.state.portfolio.position)),
+                        ]),
+                    );
+                    json_log(
+                        "audit",
+                        obj(&[
+                            ("intent_id", v_str(&intent_id)),
+                            ("client_order_id", v_str(&client_id)),
+                            ("exchange_order_id", v_str("stub")),
+                            ("state", v_str("FILLED")),
+                            ("source_of_truth", v_str("trade_stream")),
                         ]),
                     );
                 }
-                let _ = wal.append_json(&json!({
-                    "ts": logging::ts_now(),
-                    "module": "wal",
-                    "intent_id": intent_id,
-                    "strategy_id": inst.id,
-                    "operation": "fill",
-                    "params_hash": params_hash(&client_id),
-                    "price": fill.price,
-                    "qty": fill.qty,
-                    "fee": fill.fee,
-                    "fsync": true
-                }));
-                let realized = inst.state.portfolio.apply_fill(fill);
-                inst.state.metrics.pnl += realized;
-                if realized > 0.0 {
-                    inst.state.metrics.wins += 1;
-                    circuit.record_success();
-                } else if realized < 0.0 {
-                    inst.state.metrics.losses += 1;
-                    inst.state.last_loss_ts = fill.ts;
-                    circuit.record_failure();
-                } else {
-                    circuit.record_success();
-                }
-                inst.state.last_trade_ts = fill.ts;
-                let day = fill.ts / 86_400;
-                if inst.state.trade_day != day {
-                    inst.state.trade_day = day;
-                    inst.state.trades_today = 0;
-                }
-                inst.state.trades_today += 1;
-                json_log(
-                    "position_agg",
-                    obj(&[
-                        ("asset", v_str(&cfg.symbol)),
-                        ("spot", v_num(inst.state.portfolio.position)),
-                        ("perp", v_num(0.0)),
-                        ("net", v_num(inst.state.portfolio.position)),
-                    ]),
-                );
-                json_log(
-                    "audit",
-                    obj(&[
-                        ("intent_id", v_str(&intent_id)),
-                        ("client_order_id", v_str(&client_id)),
-                        ("exchange_order_id", v_str("stub")),
-                        ("state", v_str("FILLED")),
-                        ("source_of_truth", v_str("trade_stream")),
-                    ]),
-                );
             }
 
+            inst.state.portfolio.equity =
+                inst.state.portfolio.cash + inst.state.portfolio.position * view.last.c;
             metrics.update(&mut inst.state);
             json_log(
                 "metrics",
@@ -545,6 +625,25 @@ async fn main() -> Result<()> {
                 ]),
             );
         }
+        if halt_on_slip {
+            for s in strategies.iter_mut() {
+                s.state.trading_halted = true;
+            }
+        }
+
+        if live_adapter && start.saturating_sub(last_reconcile_ts) >= cfg.reconcile_secs {
+            last_reconcile_ts = start;
+            live_ops::reconcile_binance(&cfg, &mut strategies, &mut pending_by_client).await;
+        }
+
+        live_ops::cancel_stale_orders(
+            start,
+            &cfg,
+            adapter.as_mut(),
+            &mut pending_by_client,
+            &mut order_book,
+            &mut wal,
+        );
 
         if start % (cfg.persist_every_secs) == 0 {
             let _persist_prof = ProfileScope::new("profile", "persist_snapshot");

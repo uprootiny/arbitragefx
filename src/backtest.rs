@@ -7,6 +7,19 @@ use crate::risk::RiskEngine;
 use crate::state::{Config, Fill, MarketState, StrategyInstance};
 use crate::strategy::{Action, MarketAux};
 
+/// Execution mode for backtesting
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum ExecMode {
+    /// Instant fill at close price (unrealistic but fast)
+    Instant,
+    /// Market order with slippage
+    Market,
+    /// Limit order with fill probability
+    Limit,
+    /// Realistic: limit with adverse selection and partial fills
+    Realistic,
+}
+
 #[derive(Debug, Clone)]
 pub struct ExecConfig {
     pub slippage_k: f64,
@@ -14,18 +27,152 @@ pub struct ExecConfig {
     pub latency_min: u64,
     pub latency_max: u64,
     pub max_fill_ratio: f64,
+    /// Execution mode
+    pub mode: ExecMode,
+    /// Limit order fill probability base (0.0-1.0)
+    pub limit_fill_prob: f64,
+    /// Adverse selection factor (0.0-1.0) - how much fills are biased against us
+    pub adverse_selection: f64,
+    /// Volatility multiplier for slippage
+    pub vol_slip_mult: f64,
 }
 
 impl ExecConfig {
     pub fn from_env() -> Self {
+        let mode = match std::env::var("EXEC_MODE").unwrap_or_default().as_str() {
+            "instant" => ExecMode::Instant,
+            "market" => ExecMode::Market,
+            "limit" => ExecMode::Limit,
+            "realistic" => ExecMode::Realistic,
+            _ => ExecMode::Market,
+        };
         Self {
             slippage_k: std::env::var("SLIP_K").ok().and_then(|v| v.parse().ok()).unwrap_or(0.0008),
             fee_rate: std::env::var("FEE_RATE").ok().and_then(|v| v.parse().ok()).unwrap_or(0.001),
             latency_min: std::env::var("LAT_MIN").ok().and_then(|v| v.parse().ok()).unwrap_or(2),
             latency_max: std::env::var("LAT_MAX").ok().and_then(|v| v.parse().ok()).unwrap_or(8),
             max_fill_ratio: std::env::var("FILL_RATIO").ok().and_then(|v| v.parse().ok()).unwrap_or(0.5),
+            mode,
+            limit_fill_prob: std::env::var("LIMIT_FILL_PROB").ok().and_then(|v| v.parse().ok()).unwrap_or(0.7),
+            adverse_selection: std::env::var("ADVERSE_SEL").ok().and_then(|v| v.parse().ok()).unwrap_or(0.3),
+            vol_slip_mult: std::env::var("VOL_SLIP_MULT").ok().and_then(|v| v.parse().ok()).unwrap_or(2.0),
         }
     }
+
+    /// Instant execution config (for fast testing)
+    pub fn instant() -> Self {
+        Self {
+            mode: ExecMode::Instant,
+            slippage_k: 0.0,
+            fee_rate: 0.0,
+            latency_min: 0,
+            latency_max: 0,
+            max_fill_ratio: 1.0,
+            limit_fill_prob: 1.0,
+            adverse_selection: 0.0,
+            vol_slip_mult: 0.0,
+        }
+    }
+
+    /// Maker order config (limit orders, low fees)
+    pub fn maker() -> Self {
+        Self {
+            mode: ExecMode::Limit,
+            slippage_k: 0.0001,
+            fee_rate: 0.0002,  // Maker fee
+            latency_min: 5,
+            latency_max: 20,
+            max_fill_ratio: 0.8,
+            limit_fill_prob: 0.7,
+            adverse_selection: 0.25,
+            vol_slip_mult: 1.0,
+        }
+    }
+
+    /// Taker order config (market orders, higher fees)
+    pub fn taker() -> Self {
+        Self {
+            mode: ExecMode::Market,
+            slippage_k: 0.0008,
+            fee_rate: 0.001,  // Taker fee
+            latency_min: 2,
+            latency_max: 8,
+            max_fill_ratio: 1.0,
+            limit_fill_prob: 1.0,
+            adverse_selection: 0.0,
+            vol_slip_mult: 2.0,
+        }
+    }
+
+    /// Realistic config (mixed limit/market with adverse selection)
+    pub fn realistic() -> Self {
+        Self {
+            mode: ExecMode::Realistic,
+            slippage_k: 0.0005,
+            fee_rate: 0.0004,  // Blended rate
+            latency_min: 3,
+            latency_max: 15,
+            max_fill_ratio: 0.6,
+            limit_fill_prob: 0.65,
+            adverse_selection: 0.3,
+            vol_slip_mult: 1.5,
+        }
+    }
+}
+
+/// Calculate fill probability for a limit order
+pub fn calc_fill_probability(
+    is_buy: bool,
+    limit_price: f64,
+    current_price: f64,
+    volatility: f64,
+    base_prob: f64,
+    adverse_sel: f64,
+) -> f64 {
+    if volatility <= 0.0 {
+        return base_prob;
+    }
+
+    // Distance from current price (negative = favorable, positive = unfavorable)
+    let distance = if is_buy {
+        (current_price - limit_price) / current_price
+    } else {
+        (limit_price - current_price) / current_price
+    };
+
+    // Favorable limit (below market for buy, above for sell) = higher fill prob
+    // Unfavorable limit = lower fill prob
+    let distance_factor = if distance > 0.0 {
+        // Limit is favorable - high fill probability
+        (1.0 + distance / volatility).min(1.5)
+    } else {
+        // Limit is unfavorable - probability decays
+        (-distance.abs() / volatility).exp()
+    };
+
+    // Adverse selection: fills that happen tend to be losing trades
+    // If we get filled, price was likely moving against us
+    let adverse_factor = 1.0 - adverse_sel;
+
+    (base_prob * distance_factor * adverse_factor).clamp(0.0, 1.0)
+}
+
+/// Calculate slippage for an order
+pub fn calc_slippage(
+    qty: f64,
+    _price: f64,
+    volume: f64,
+    volatility: f64,
+    config: &ExecConfig,
+) -> f64 {
+    // Base slippage from size vs volume
+    let size_slip = config.slippage_k * qty.abs() / volume.max(1.0);
+
+    // Volatility-adjusted slippage
+    let vol_slip = volatility * config.vol_slip_mult * 0.1;
+
+    // Total slippage
+    (size_slip + vol_slip).min(0.05)  // Cap at 5%
 }
 
 #[derive(Debug, Clone)]
@@ -244,8 +391,8 @@ pub fn run_backtest(cfg: Config, rows: &[CsvRow]) -> Result<(f64, f64)> {
     let pnl = strategies.iter().map(|s| s.state.metrics.pnl).sum::<f64>();
     let max_dd = strategies
         .iter()
-        .map(|s| s.state.metrics.max_drawdown)
-        .fold(0.0, f64::min);
+        .map(|s| s.state.metrics.max_drawdown.abs())
+        .fold(0.0, f64::max);
     let buy_hold = if let (Some(entry), Some(exit)) = (buy_hold_entry, buy_hold_exit) {
         exit - entry
     } else {
@@ -266,7 +413,7 @@ pub fn run_backtest(cfg: Config, rows: &[CsvRow]) -> Result<(f64, f64)> {
             inst.state.portfolio.entry_price,
             friction[idx],
             -friction[idx],
-            inst.state.metrics.max_drawdown,
+            inst.state.metrics.max_drawdown.abs(),
             total_trades,
             inst.state.metrics.wins,
             inst.state.metrics.losses,
@@ -278,4 +425,46 @@ pub fn run_backtest(cfg: Config, rows: &[CsvRow]) -> Result<(f64, f64)> {
         );
     }
     Ok((pnl, max_dd))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn test_cfg() -> Config {
+        let mut cfg = Config::from_env();
+        cfg.symbol = "BTCUSDT".to_string();
+        cfg.candle_granularity = 300;
+        cfg.window = 50;
+        cfg
+    }
+
+    #[test]
+    fn test_parse_csv_line_valid() {
+        let line = "1000,1,1,1,1,10,0.0001,0.0,0.0,0.0,0.0";
+        let row = parse_csv_line(line).unwrap();
+        assert_eq!(row.ts, 1000);
+        assert_eq!(row.c, 1.0);
+        assert_eq!(row.funding, 0.0001);
+    }
+
+    #[test]
+    fn test_slippage_price_monotonic() {
+        let base = 100.0;
+        let p1 = slippage_price(base, 0.1, 1000.0, 0.001, 0.01);
+        let p2 = slippage_price(base, 1.0, 1000.0, 0.001, 0.01);
+        assert!(p2 > p1);
+    }
+
+    #[test]
+    fn test_run_backtest_smoke() {
+        let rows = vec![
+            CsvRow { ts: 1000, o: 1.0, h: 1.0, l: 1.0, c: 1.0, v: 1000.0, funding: 0.0, borrow: 0.0, liq: 0.0, depeg: 0.0, oi: 0.0 },
+            CsvRow { ts: 1300, o: 1.0, h: 1.0, l: 1.0, c: 1.1, v: 1100.0, funding: 0.0, borrow: 0.0, liq: 0.0, depeg: 0.0, oi: 0.0 },
+            CsvRow { ts: 1600, o: 1.0, h: 1.0, l: 1.0, c: 0.9, v: 900.0, funding: 0.0, borrow: 0.0, liq: 0.0, depeg: 0.0, oi: 0.0 },
+        ];
+        let cfg = test_cfg();
+        let result = run_backtest(cfg, &rows);
+        assert!(result.is_ok());
+    }
 }

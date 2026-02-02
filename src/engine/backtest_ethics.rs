@@ -417,6 +417,7 @@ impl Default for LookaheadDetector {
 }
 
 /// Compute percentile of a sorted slice
+#[allow(dead_code)]
 fn percentile(sorted: &[f64], p: f64) -> f64 {
     if sorted.is_empty() {
         return 0.0;

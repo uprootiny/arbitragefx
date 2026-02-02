@@ -5,11 +5,11 @@ type HmacSha256 = Hmac<Sha256>;
 
 /// Sign a query string with HMAC-SHA256 (Binance style).
 /// Returns hex-encoded signature.
-pub fn sign_binance(query: &str, secret: &str) -> String {
+pub fn sign_binance(query: &str, secret: &str) -> Result<String, String> {
     let mut mac = HmacSha256::new_from_slice(secret.as_bytes())
-        .expect("HMAC accepts any key length");
+        .map_err(|e| format!("HMAC error: {}", e))?;
     mac.update(query.as_bytes());
-    hex::encode(mac.finalize().into_bytes())
+    Ok(hex::encode(mac.finalize().into_bytes()))
 }
 
 /// Sign a message with HMAC-SHA512 for Kraken.
@@ -50,7 +50,7 @@ mod tests {
     fn test_binance_sign() {
         let query = "symbol=BTCUSDT&side=BUY&type=LIMIT&timeInForce=GTC&quantity=0.001&price=50000&timestamp=1234567890000";
         let secret = "test_secret";
-        let sig = sign_binance(query, secret);
+        let sig = sign_binance(query, secret).unwrap();
         assert!(!sig.is_empty());
         assert_eq!(sig.len(), 64);
     }

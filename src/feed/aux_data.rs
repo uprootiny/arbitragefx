@@ -72,6 +72,7 @@ struct LiquidationWindow {
     window_secs: u64,
 }
 
+#[allow(dead_code)]
 struct LiquidationEvent {
     ts: Instant,
     size_usd: f64,
@@ -122,6 +123,7 @@ impl LiquidationWindow {
 
 // Binance API response types
 #[derive(Deserialize, Debug)]
+#[allow(dead_code)]
 struct BinanceFundingRate {
     symbol: String,
     #[serde(rename = "fundingRate")]
@@ -129,6 +131,7 @@ struct BinanceFundingRate {
 }
 
 #[derive(Deserialize, Debug)]
+#[allow(dead_code)]
 struct BinanceMarginAsset {
     asset: String,
     #[serde(rename = "borrowRate")]
@@ -138,6 +141,7 @@ struct BinanceMarginAsset {
 }
 
 #[derive(Deserialize, Debug)]
+#[allow(dead_code)]
 struct BinancePremiumIndex {
     symbol: String,
     #[serde(rename = "markPrice")]
@@ -147,12 +151,14 @@ struct BinancePremiumIndex {
 }
 
 #[derive(Deserialize, Debug)]
+#[allow(dead_code)]
 struct BinanceLiquidation {
     #[serde(rename = "o")]
     order: BinanceLiqOrder,
 }
 
 #[derive(Deserialize, Debug)]
+#[allow(dead_code)]
 struct BinanceLiqOrder {
     #[serde(rename = "s")]
     symbol: String,
@@ -197,13 +203,12 @@ impl AuxDataFetcher {
     pub async fn fetch(&self, symbol: &str) -> Result<MarketAux> {
         // Check cache first
         let should_fetch = {
-            let cache = self.cache.lock().unwrap();
+            let cache = self.cache.lock().map_err(|_| anyhow::anyhow!("aux cache lock poisoned"))?;
             match cache.get(symbol) {
                 Some(cached) if cached.is_fresh(self.cache_ttl_secs) => {
                     return Ok(cached.data);
                 }
                 Some(cached) if !cached.can_retry() => {
-                    // In backoff period, return stale data with warning
                     return Ok(cached.data);
                 }
                 _ => true,
@@ -213,18 +218,18 @@ impl AuxDataFetcher {
         if should_fetch {
             match self.fetch_fresh(symbol).await {
                 Ok(data) => {
-                    let mut cache = self.cache.lock().unwrap();
+                    let mut cache = self.cache.lock().map_err(|_| anyhow::anyhow!("aux cache lock poisoned"))?;
                     cache.entry(symbol.to_string())
                         .and_modify(|c| c.record_success(data))
                         .or_insert_with(|| CachedAux::new(data));
                     return Ok(data);
                 }
                 Err(e) => {
-                    let mut cache = self.cache.lock().unwrap();
-                    if let Some(cached) = cache.get_mut(symbol) {
-                        cached.record_failure();
-                        // Return stale data on failure
-                        return Ok(cached.data);
+                    if let Ok(mut cache) = self.cache.lock() {
+                        if let Some(cached) = cache.get_mut(symbol) {
+                            cached.record_failure();
+                            return Ok(cached.data);
+                        }
                     }
                     return Err(e);
                 }

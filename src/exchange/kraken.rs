@@ -119,6 +119,7 @@ struct KrakenOrderResult {
 }
 
 #[derive(Deserialize, Debug, Clone)]
+#[allow(dead_code)]
 struct KrakenOrderInfo {
     status: String,
     #[serde(default)]
@@ -136,6 +137,7 @@ struct KrakenOrderInfo {
 }
 
 #[derive(Deserialize, Debug, Clone, Default)]
+#[allow(dead_code)]
 struct KrakenOrderDescr {
     #[serde(default)]
     pair: String,
@@ -149,6 +151,7 @@ struct KrakenOrderDescr {
 }
 
 #[derive(Deserialize, Debug, Clone)]
+#[allow(dead_code)]
 struct KrakenTickerInfo {
     a: Vec<String>,
     b: Vec<String>,

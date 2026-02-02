@@ -25,6 +25,7 @@ struct ListenKeyResp {
 }
 
 #[derive(Debug, Deserialize)]
+#[allow(dead_code)]
 struct WsExecReport {
     #[serde(rename = "e")]
     event_type: String,
@@ -200,7 +201,8 @@ async fn fetch_my_trades(
     if start_time_ms > 0 {
         query.push_str(&format!("&startTime={}", start_time_ms));
     }
-    let signature = sign_binance(&query, api_secret);
+    let signature = sign_binance(&query, api_secret)
+        .map_err(|e| anyhow::anyhow!(e))?;
     let signed = format!("{}&signature={}", query, signature);
     let url = format!("{}/api/v3/myTrades?{}", base, signed);
 

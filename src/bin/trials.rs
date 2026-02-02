@@ -3,6 +3,7 @@ use std::collections::HashMap;
 use std::hash::{Hash, Hasher};
 use std::path::PathBuf;
 use std::time::{SystemTime, UNIX_EPOCH};
+use anyhow::Result;
 
 use arbitragefx::metrics::MetricsEngine;
 use arbitragefx::risk::RiskEngine;
@@ -115,7 +116,11 @@ fn run_trial(cfg: &Config, trial: TrialConfig, candles: &[arbitragefx::exchange:
     (pnl, max_dd, wins, losses)
 }
 
-fn main() {
+fn now_ts() -> Result<u64> {
+    Ok(SystemTime::now().duration_since(UNIX_EPOCH)?.as_secs())
+}
+
+fn main() -> Result<()> {
     let base = Config::from_env();
     let candles = generate_candles(42, 2000, 30_000.0);
 
@@ -125,7 +130,7 @@ fn main() {
     let edge = [0.0015, 0.0025, 0.0035];
 
     let planned_trials = (ema_fast.len() * ema_slow.len() * entry.len() * edge.len()) as u32;
-    let run_id = format!("trial_{}", SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs());
+    let run_id = format!("trial_{}", now_ts()?);
     let correction = match std::env::var("CORRECTION").unwrap_or_else(|_| "bonferroni".to_string()).to_lowercase().as_str() {
         "none" => CorrectionMethod::None,
         "holm" => CorrectionMethod::Holm,
@@ -134,7 +139,7 @@ fn main() {
         _ => CorrectionMethod::Bonferroni,
     };
     let out_dir = PathBuf::from("out/experiments");
-    let mut registry = ExperimentRegistry::new(&out_dir).expect("registry init");
+    let mut registry = ExperimentRegistry::new(&out_dir)?;
 
     let mut cfg_hasher = std::collections::hash_map::DefaultHasher::new();
     base.symbol.hash(&mut cfg_hasher);
@@ -147,7 +152,7 @@ fn main() {
     let run = ExperimentRun {
         id: run_id.clone(),
         git_sha: None,
-        start_ts: SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs(),
+        start_ts: now_ts()?,
         seed: 42,
         dataset_id: "synthetic".to_string(),
         config_hash,
@@ -155,7 +160,7 @@ fn main() {
         correction_method: correction,
         planned_trials,
     };
-    registry.start_run(run.clone()).expect("start_run");
+    registry.start_run(run.clone())?;
 
     let mut results = Vec::new();
     let mut trial_id: u32 = 0;
@@ -200,9 +205,9 @@ fn main() {
                         metrics,
                         status: TrialStatus::Completed,
                         notes: Vec::new(),
-                        timestamp: SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs(),
+                        timestamp: now_ts()?,
                     };
-                    registry.record_trial(trial_result).expect("record_trial");
+                    registry.record_trial(trial_result)?;
                     results.push((trial, pnl, dd));
                     trial_id += 1;
                 }
@@ -216,5 +221,8 @@ fn main() {
         println!("{},{},{},{:.4},{:.2},{:.4}", trial.ema_fast, trial.ema_slow, trial.entry_th, trial.edge_scale, pnl, dd);
     }
 
-    let _ = registry.finish_run(0.05);
+    if let Err(err) = registry.finish_run(0.05) {
+        eprintln!("[WARN] finish_run failed: {}", err);
+    }
+    Ok(())
 }

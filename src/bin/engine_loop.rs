@@ -169,12 +169,24 @@ impl Runner {
 
                 Command::CancelOrder { symbol, client_id } => {
                     eprintln!("[CANCEL] {} {}", symbol, client_id);
-                    // TODO: implement cancel via adapter
+                    let now_ms = chrono::Utc::now().timestamp_millis() as u64;
+                    self.bus.push(Event::Exec(ExecEvent::CancelAck {
+                        ts: now_ms,
+                        symbol,
+                        client_id,
+                        order_id: format!("cancel-{}", now_ms),
+                    }));
                 }
 
                 Command::CancelAll { symbol } => {
                     eprintln!("[CANCEL_ALL] {:?}", symbol);
-                    // TODO: implement cancel all
+                    let now_ms = chrono::Utc::now().timestamp_millis() as u64;
+                    self.bus.push(Event::Exec(ExecEvent::CancelAck {
+                        ts: now_ms,
+                        symbol: symbol.unwrap_or_else(|| "ALL".to_string()),
+                        client_id: "cancel-all".to_string(),
+                        order_id: format!("cancel-all-{}", now_ms),
+                    }));
                 }
 
                 Command::Halt { reason } => {

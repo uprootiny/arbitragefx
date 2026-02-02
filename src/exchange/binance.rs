@@ -40,6 +40,7 @@ impl Binance {
 }
 
 #[derive(Deserialize, Debug)]
+#[allow(dead_code)]
 struct BinanceFundingRate {
     symbol: String,
     #[serde(rename = "fundingRate")]
@@ -49,6 +50,7 @@ struct BinanceFundingRate {
 }
 
 #[derive(Deserialize, Debug)]
+#[allow(dead_code)]
 struct BinanceMarkPrice {
     symbol: String,
     #[serde(rename = "markPrice")]
@@ -59,6 +61,7 @@ struct BinanceMarkPrice {
 
 #[derive(Deserialize, Debug)]
 #[serde(rename_all = "camelCase")]
+#[allow(dead_code)]
 struct BinanceOrderResponse {
     symbol: String,
     order_id: u64,
@@ -73,6 +76,7 @@ struct BinanceOrderResponse {
 }
 
 #[derive(Deserialize, Debug)]
+#[allow(dead_code)]
 struct BinanceFill {
     price: String,
     qty: String,
@@ -200,7 +204,8 @@ impl Exchange for Binance {
             symbol, side, qty, timestamp, recv_window
         );
 
-        let signature = sign_binance(&query, api_secret);
+        let signature = sign_binance(&query, api_secret)
+            .map_err(|e| anyhow!(e))?;
         let signed_query = format!("{}&signature={}", query, signature);
 
         let url = format!("{}/api/v3/order?{}", self.base, signed_query);

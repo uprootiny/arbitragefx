@@ -1,4 +1,5 @@
 use std::future::Future;
+use anyhow::{anyhow, Result};
 use tokio::time::{sleep, Duration};
 use rand::Rng;
 
@@ -38,17 +39,16 @@ impl RetryConfig {
 }
 
 /// Retry a fallible async operation with exponential backoff
-pub async fn retry_async<F, Fut, T, E>(
+pub async fn retry_async<F, Fut, T>(
     config: &RetryConfig,
     operation_name: &str,
     mut operation: F,
-) -> Result<T, E>
+) -> Result<T>
 where
     F: FnMut() -> Fut,
-    Fut: Future<Output = Result<T, E>>,
-    E: std::fmt::Display,
+    Fut: Future<Output = Result<T>>,
 {
-    let mut last_error: Option<E> = None;
+    let mut last_error: Option<anyhow::Error> = None;
 
     for attempt in 0..=config.max_retries {
         match operation().await {
@@ -71,7 +71,7 @@ where
         }
     }
 
-    Err(last_error.expect("at least one attempt must have been made"))
+    Err(last_error.unwrap_or_else(|| anyhow!("retry_async exhausted without error")))
 }
 
 /// Categorize errors for retry decisions
@@ -114,8 +114,8 @@ mod tests {
     #[tokio::test]
     async fn test_retry_success_first_try() {
         let config = RetryConfig::default();
-        let result: Result<i32, &str> = retry_async(&config, "test", || async { Ok(42) }).await;
-        assert_eq!(result, Ok(42));
+        let result: Result<i32> = retry_async(&config, "test", || async { Ok(42) }).await;
+        assert_eq!(result.unwrap(), 42);
     }
 
     #[tokio::test]
@@ -129,19 +129,19 @@ mod tests {
         let counter = std::sync::Arc::new(std::sync::atomic::AtomicU32::new(0));
         let counter_clone = counter.clone();
 
-        let result: Result<i32, &str> = retry_async(&config, "test", || {
+        let result: Result<i32> = retry_async(&config, "test", || {
             let c = counter_clone.clone();
             async move {
                 let attempt = c.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
                 if attempt < 2 {
-                    Err("not yet")
+                    Err(anyhow!("not yet"))
                 } else {
                     Ok(42)
                 }
             }
         }).await;
 
-        assert_eq!(result, Ok(42));
+        assert_eq!(result.unwrap(), 42);
         assert_eq!(counter.load(std::sync::atomic::Ordering::SeqCst), 3);
     }
 }

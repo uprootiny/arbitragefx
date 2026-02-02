@@ -52,7 +52,8 @@ impl BinanceAdapter {
             query.push_str(&format!("&price={:.8}&timeInForce=GTC", price));
         }
 
-        let signature = sign_binance(&query, &self.api_secret);
+        let signature = sign_binance(&query, &self.api_secret)
+            .map_err(|e| format!("signing failed: {}", e))?;
         let signed_query = format!("{}&signature={}", query, signature);
         let url = format!("{}/api/v3/order?{}", self.base, signed_query);
 
@@ -99,7 +100,8 @@ impl BinanceAdapter {
             symbol, order_id, timestamp
         );
 
-        let signature = sign_binance(&query, &self.api_secret);
+        let signature = sign_binance(&query, &self.api_secret)
+            .map_err(|e| format!("signing failed: {}", e))?;
         let signed_query = format!("{}&signature={}", query, signature);
         let url = format!("{}/api/v3/order?{}", self.base, signed_query);
 
@@ -127,7 +129,8 @@ impl BinanceAdapter {
             symbol, timestamp
         );
 
-        let signature = sign_binance(&query, &self.api_secret);
+        let signature = sign_binance(&query, &self.api_secret)
+            .map_err(|e| format!("signing failed: {}", e))?;
         let signed_query = format!("{}&signature={}", query, signature);
         let url = format!("{}/api/v3/openOrders?{}", self.base, signed_query);
 

@@ -25,7 +25,7 @@ pub struct EngineState {
     pub risk: RiskState,
 
     /// Strategy states by id
-    pub strategies: HashMap<String, StrategyState>,
+    pub strategies: HashMap<String, EngineStrategyState>,
 
     /// Is system halted
     pub halted: bool,
@@ -531,7 +531,7 @@ impl RiskState {
 
 /// Per-strategy state
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
-pub struct StrategyState {
+pub struct EngineStrategyState {
     pub id: String,
     pub enabled: bool,
     pub score: f64,
