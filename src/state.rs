@@ -48,6 +48,9 @@ pub struct Config {
     pub reconcile_drift_abs: f64,
     pub max_fill_slip_pct: f64,
     pub fill_channel_capacity: usize,
+    pub allow_unknown_regime: bool,
+    pub max_latency_ms: u64,
+    pub max_liquidity_spread: f64,
 }
 
 impl Config {
@@ -96,6 +99,9 @@ impl Config {
             reconcile_drift_abs: std::env::var("RECONCILE_DRIFT_ABS").ok().and_then(|v| v.parse().ok()).unwrap_or(0.0005),
             max_fill_slip_pct: std::env::var("MAX_FILL_SLIP_PCT").ok().and_then(|v| v.parse().ok()).unwrap_or(0.02),
             fill_channel_capacity: std::env::var("FILL_CHANNEL_CAP").ok().and_then(|v| v.parse().ok()).unwrap_or(256),
+            allow_unknown_regime: std::env::var("ALLOW_UNKNOWN_REGIME").map(|v| matches!(v.to_lowercase().as_str(), "1" | "true" | "yes")).unwrap_or(false),
+            max_latency_ms: std::env::var("MAX_LATENCY_MS").ok().and_then(|v| v.parse().ok()).unwrap_or(300000),
+            max_liquidity_spread: std::env::var("MAX_LIQ_SPREAD").ok().and_then(|v| v.parse().ok()).unwrap_or(0.05),
         }
     }
 
@@ -703,6 +709,9 @@ mod tests {
             reconcile_drift_abs: 0.0005,
             max_fill_slip_pct: 0.02,
             fill_channel_capacity: 256,
+            allow_unknown_regime: false,
+            max_latency_ms: 300000,
+            max_liquidity_spread: 0.01,
         }
     }
 

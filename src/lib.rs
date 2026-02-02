@@ -21,3 +21,4 @@ pub mod indicators;
 pub mod filters;
 pub mod sizing;
 pub mod hypothesis;
+pub mod epistemic;
