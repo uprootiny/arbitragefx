@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Trajectory Explorer - ArbitrageFX</title>
+    <style>
+        body { margin: 0; padding: 0; }
+        #app { min-height: 100vh; }
+        .loading-fallback {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            background: #1a1a2e;
+            color: #eee;
+            font-family: system-ui, sans-serif;
+        }
+    </style>
+</head>
+<body>
+    <div id="app">
+        <div class="loading-fallback">
+            <p>Loading Trajectory Explorer...</p>
+            <p style="color: #888; font-size: 0.9rem; margin-top: 1rem;">
+                If this persists, ensure the server is running and JavaScript is enabled.
+            </p>
+        </div>
+    </div>
+    <script>
+        // API base - same origin when served from Clojure server
+        window.TRAJECTORY_API_BASE = '';
+    </script>
+    <script src="/js/main.js"></script>
+</body>
+</html>
