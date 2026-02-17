@@ -8,8 +8,11 @@ use std::io::{BufRead, BufReader, Write};
 use std::net::TcpListener;
 
 fn main() {
-    let port = 8765;
-    let listener = TcpListener::bind(format!("127.0.0.1:{}", port))
+    let port: u16 = std::env::var("PORT")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(8765);
+    let listener = TcpListener::bind(format!("0.0.0.0:{}", port))
         .expect("Failed to bind");
 
     println!("Epistemic Server running at http://localhost:{}", port);
