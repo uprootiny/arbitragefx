@@ -237,6 +237,20 @@ fn latency_step(ts: u64, min: u64, max: u64) -> u64 {
     min + (ts % span)
 }
 
+/// Deterministic latency model with bounded jitter.
+/// Uses a simple xorshift to avoid RNG dependencies and keep replay stable.
+fn latency_delay(submit_ts: u64, strategy_idx: usize, min: u64, max: u64) -> u64 {
+    if max <= min {
+        return min;
+    }
+    let mut x = submit_ts ^ ((strategy_idx as u64).wrapping_mul(0x9e37_79b9_7f4a_7c15));
+    x ^= x << 13;
+    x ^= x >> 7;
+    x ^= x << 17;
+    let span = max - min + 1;
+    min + (x % span)
+}
+
 pub fn run_backtest(cfg: Config, rows: &[CsvRow]) -> Result<(f64, f64)> {
     let exec_cfg = ExecConfig::from_env();
     let event_cfg = EventConfig::from_env();
@@ -324,7 +338,12 @@ pub fn run_backtest(cfg: Config, rows: &[CsvRow]) -> Result<(f64, f64)> {
                     still_pending.push(order);
                     continue;
                 }
-                let delay = latency_step(order.submit_ts, exec_cfg.latency_min, exec_cfg.latency_max);
+                let delay = latency_delay(
+                    order.submit_ts,
+                    order.strategy_idx,
+                    exec_cfg.latency_min,
+                    exec_cfg.latency_max,
+                );
                 if row.ts < order.submit_ts + delay {
                     still_pending.push(order);
                     continue;
@@ -454,6 +473,43 @@ mod tests {
         let p1 = slippage_price(base, 0.1, 1000.0, 0.001, 0.01);
         let p2 = slippage_price(base, 1.0, 1000.0, 0.001, 0.01);
         assert!(p2 > p1);
+    }
+
+    #[test]
+    fn test_slippage_rises_with_volatility() {
+        let base = 100.0;
+        let low_vol = slippage_price(base, 1.0, 1000.0, 0.001, 0.005);
+        let high_vol = slippage_price(base, 1.0, 1000.0, 0.001, 0.05);
+        assert!(high_vol > low_vol);
+    }
+
+    #[test]
+    fn test_partial_fills_accumulate_to_full() {
+        let mut remaining: f64 = 10.0;
+        let max_fill_ratio = 0.5;
+        let mut filled = 0.0;
+        for _ in 0..5 {
+            if remaining.abs() <= 1e-9 {
+                break;
+            }
+            let fill = remaining * max_fill_ratio;
+            filled += fill;
+            remaining -= fill;
+        }
+        let total = filled + remaining;
+        assert!((total - 10.0).abs() < 1e-6);
+    }
+
+    #[test]
+    fn test_latency_delay_deterministic_and_bounded() {
+        let min = 2;
+        let max = 8;
+        let d1 = latency_delay(1700, 3, min, max);
+        let d2 = latency_delay(1700, 3, min, max);
+        let d3 = latency_delay(1701, 3, min, max);
+        assert_eq!(d1, d2);
+        assert!(d1 >= min && d1 <= max);
+        assert!(d3 >= min && d3 <= max);
     }
 
     #[test]

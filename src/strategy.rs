@@ -176,6 +176,25 @@ impl PortfolioState {
     }
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::state::Fill;
+
+    #[test]
+    fn apply_fill_charges_fee() {
+        let mut p = PortfolioState {
+            cash: 100.0,
+            position: 0.0,
+            entry_price: 0.0,
+            equity: 100.0,
+        };
+        let realized = p.apply_fill(Fill { price: 10.0, qty: 1.0, fee: 1.0, ts: 0 });
+        assert_eq!(realized, 0.0);
+        assert!((p.cash - 89.0).abs() < 1e-9);
+    }
+}
+
 #[derive(Debug, Clone, Copy)]
 pub struct StrategyState {
     // Per-instance mutable state owned by the strategy.
@@ -257,7 +276,7 @@ pub trait Strategy {
 }
 
 #[cfg(test)]
-mod tests {
+mod strategy_tests {
     use super::*;
 
     fn make_aux(

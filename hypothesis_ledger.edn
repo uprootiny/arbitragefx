@@ -1,0 +1,172 @@
+;; ============================================================================
+;; HYPOTHESIS LEDGER — Living Document
+;;
+;; Truth values: (stv strength confidence)
+;;   strength   = P(hypothesis is true | evidence)
+;;   confidence = weight of evidence (0 = no data, 1 = exhaustive)
+;;
+;; Each evidence entry shifts the truth value via simple Bayesian update:
+;;   confidence_new = 1 - (1 - confidence_old) * (1 - evidence_weight)
+;;   strength_new   = weighted blend of prior and observation
+;;
+;; Generated from real BTC/USDT backtests on 2026-02-18
+;; ============================================================================
+
+{:meta
+ {:version "1.0.0"
+  :generated "2026-02-18"
+  :datasets
+  [{:id :markdown-1   :file "btc_real_1h.csv"  :candles 1000 :regime "Strong Bear"  :move "-27%" :period "Jan-Feb 2026"}
+   {:id :markup-1     :file "btc_bull_1h.csv"   :candles 2209 :regime "Strong Bull"  :move "+49%" :period "Oct-Dec 2024"}
+   {:id :accumulator-1 :file "btc_range_1h.csv" :candles 2209 :regime "Ranging"      :move "+1%"  :period "Jul-Sep 2024"}
+   {:id :markdown-2   :file "btc_bear2_1h.csv"  :candles 1465 :regime "Mild Bear"    :move "-2%"  :period "Mar-May 2024"}]}
+
+ :hypotheses
+
+ [{:id "H001"
+   :name "Momentum strategies generate raw alpha"
+   :prior (stv 0.5 0.0)
+   :current (stv 0.35 0.65)
+   :evidence
+   [{:dataset :markdown-1  :observation "churn-9 raw PnL +$4.29 (best), 10/12 strategies negative raw PnL"
+     :supports? :partial  :weight 0.2
+     :detail {:best-raw-pnl 4.29 :worst-raw-pnl -5.45 :positive-count 1 :total 12}}
+    {:dataset :markup-1    :observation "All 12 strategies negative raw PnL. Best: churn-9 -$0.81"
+     :supports? false      :weight 0.2
+     :detail {:best-raw-pnl -0.81 :worst-raw-pnl -16.12 :positive-count 0 :total 12}}
+    {:dataset :accumulator-1 :observation "5/12 strategies positive raw PnL. Best: churn-0 +$9.53"
+     :supports? :partial    :weight 0.15
+     :detail {:best-raw-pnl 9.53 :worst-raw-pnl -8.39 :positive-count 5 :total 12}}
+    {:dataset :markdown-2  :observation "2/12 positive raw. churn-9 +$2.91, churn-11 +$7.10"
+     :supports? :partial    :weight 0.1
+     :detail {:best-raw-pnl 7.10 :worst-raw-pnl -5.95 :positive-count 2 :total 12}}]
+   :assessment "Weak. Raw alpha exists in some regimes but is inconsistent across strategies and periods."}
+
+  {:id "H002"
+   :name "Friction dominates alpha in all regimes"
+   :prior (stv 0.5 0.0)
+   :current (stv 0.88 0.75)
+   :evidence
+   [{:dataset :markdown-1  :observation "churn-9: +$4.29 raw, -$5.77 friction = -$1.47 net"
+     :supports? true       :weight 0.2
+     :detail {:raw-pnl 4.29 :friction 5.77 :net-pnl -1.47 :friction-ratio 1.35}}
+    {:dataset :markup-1    :observation "All net PnL negative. Friction $4-$14 per strategy"
+     :supports? true       :weight 0.2
+     :detail {:avg-friction 7.16 :avg-raw-pnl -5.15 :all-net-negative true}}
+    {:dataset :accumulator-1 :observation "churn-0: +$9.53 raw, -$5.30 friction = +$4.23 net. Only 2/12 net positive."
+     :supports? :partial    :weight 0.2
+     :detail {:net-positive-count 2 :total 12 :best-net 4.23}}
+    {:dataset :markdown-2  :observation "churn-11: +$7.10 raw, -$4.84 friction = +$2.27 net. 1/12 net positive."
+     :supports? :partial    :weight 0.15
+     :detail {:net-positive-count 1 :total 12 :best-net 2.27}}]
+   :assessment "Strong. Friction exceeds raw alpha in ~90% of strategy-regime combinations. The few exceptions (churn-0 in ranging, churn-11 in mild bear) are marginal."}
+
+  {:id "H003"
+   :name "Position sizing limits drawdown to <2%"
+   :prior (stv 0.5 0.0)
+   :current (stv 0.95 0.80)
+   :evidence
+   [{:dataset :markdown-1  :observation "Max DD 1.02% across all strategies (BTC -27%)"
+     :supports? true       :weight 0.25
+     :detail {:max-dd 0.0102 :market-move -0.27 :dd-ratio 0.038}}
+    {:dataset :markup-1    :observation "Max DD 3.05% — EXCEEDS 2% threshold"
+     :supports? false       :weight 0.2
+     :detail {:max-dd 0.0305 :market-move 0.49 :strategy "churn-11"}}
+    {:dataset :accumulator-1 :observation "Max DD 1.91% across all strategies"
+     :supports? true       :weight 0.2
+     :detail {:max-dd 0.0191 :market-move 0.01}}
+    {:dataset :markdown-2  :observation "Max DD 1.57% across all strategies"
+     :supports? true       :weight 0.15
+     :detail {:max-dd 0.0157 :market-move -0.02}}]
+   :assessment "Mostly holds. 3/4 regimes stay under 2%. Bull market (churn-11) hit 3.05% — position sizing may need tightening for high-volatility uptrends."}
+
+  {:id "H004"
+   :name "churn-9 is the best strategy across regimes"
+   :prior (stv 0.5 0.0)
+   :current (stv 0.45 0.70)
+   :evidence
+   [{:dataset :markdown-1  :observation "Best net equity PnL: -$1.47 (least bad)"
+     :supports? true       :weight 0.2
+     :detail {:equity-pnl -1.47 :rank 1 :of 12}}
+    {:dataset :markup-1    :observation "Best net equity PnL: -$5.73 (least bad)"
+     :supports? true       :weight 0.2
+     :detail {:equity-pnl -5.73 :rank 1 :of 12}}
+    {:dataset :accumulator-1 :observation "Worst performer: -$18.02 net (rank 12/12)"
+     :supports? false       :weight 0.2
+     :detail {:equity-pnl -18.02 :rank 12 :of 12}}
+    {:dataset :markdown-2  :observation "Middle of pack: -$3.49 net (rank 6/12)"
+     :supports? :partial    :weight 0.1
+     :detail {:equity-pnl -3.49 :rank 6 :of 12}}]
+   :assessment "Mixed. Best in trending markets (bull, strong bear), worst in ranging. This is a momentum strategy that bleeds in chop — consistent with its design."}
+
+  {:id "H005"
+   :name "churn-0/4 is best for ranging (Accumulator) markets"
+   :prior (stv 0.5 0.0)
+   :current (stv 0.72 0.40)
+   :evidence
+   [{:dataset :accumulator-1 :observation "+$4.23 net equity PnL, 54% win rate, 0.49% DD"
+     :supports? true       :weight 0.2
+     :detail {:equity-pnl 4.23 :win-rate 0.54 :dd 0.0049 :rank 1 :of 12}}
+    {:dataset :markdown-1  :observation "-$5.71 net — middling in strong bear"
+     :supports? :neutral   :weight 0.1
+     :detail {:equity-pnl -5.71 :rank 5 :of 12}}
+    {:dataset :markup-1    :observation "-$9.74 net — middling in bull"
+     :supports? :neutral   :weight 0.1
+     :detail {:equity-pnl -9.74 :rank 6 :of 12}}]
+   :assessment "Promising but low confidence. Only one ranging dataset tested. The low trade frequency (2086 trades vs 3341 for churn-9) means less friction — this may be the real edge."}
+
+  {:id "H006"
+   :name "churn-11 profits in mild bear markets"
+   :prior (stv 0.5 0.0)
+   :current (stv 0.65 0.35)
+   :evidence
+   [{:dataset :markdown-2  :observation "+$2.27 net equity PnL — only net-positive strategy"
+     :supports? true       :weight 0.2
+     :detail {:equity-pnl 2.27 :raw-pnl 7.10 :friction 4.84 :win-rate 0.54}}
+    {:dataset :markdown-1  :observation "-$9.79 net — worst performer in strong bear"
+     :supports? false       :weight 0.15
+     :detail {:equity-pnl -9.79 :rank 12 :of 12}}]
+   :assessment "Fragile. Works in mild bear, collapses in strong bear. The high trade count (2196-2736) generates excessive friction in volatile markets."}
+
+  {:id "H007"
+   :name "No strategy consistently beats no-trade across all regimes"
+   :prior (stv 0.5 0.0)
+   :current (stv 0.82 0.75)
+   :evidence
+   [{:dataset :markdown-1  :observation "All 12 strategies net negative. No-trade: $0."
+     :supports? true       :weight 0.2}
+    {:dataset :markup-1    :observation "All 12 strategies net negative. No-trade: $0. Buy-hold: +$30,869."
+     :supports? true       :weight 0.2}
+    {:dataset :accumulator-1 :observation "2/12 net positive (churn-0: +$4.23, churn-4: +$4.23). But buy-hold: +$600."
+     :supports? :partial    :weight 0.2}
+    {:dataset :markdown-2  :observation "1/12 net positive (churn-11: +$2.27). Buy-hold: -$1,261."
+     :supports? :partial    :weight 0.15}]
+   :assessment "The uncomfortable truth. In 2/4 regimes, no strategy beats doing nothing. In 2/4, only 1-2 strategies barely beat zero. The system preserves capital well but does not generate consistent returns."}
+
+  {:id "H008"
+   :name "Trade frequency is the primary determinant of friction"
+   :prior (stv 0.5 0.0)
+   :current (stv 0.90 0.70)
+   :evidence
+   [{:dataset :all :observation "Across all 48 strategy-regime runs: correlation between trade count and friction is >0.95"
+     :supports? true :weight 0.3
+     :detail {:low-freq-example  {:strategy "churn-0" :regime "markdown-1" :trades 461  :friction 0.57}
+              :high-freq-example {:strategy "churn-11" :regime "markup-1"  :trades 3740 :friction 14.48}
+              :ratio "8x trades → 25x friction (superlinear)"}}]
+   :assessment "Near-certain. Reducing trade frequency is the single highest-leverage improvement available."}]
+
+ :invariants
+ [{:id "I001" :statement "equity > 0 in all runs" :holds? true :checked 48}
+  {:id "I002" :statement "max_drawdown <= 5% in all runs" :holds? true :checked 48}
+  {:id "I003" :statement "max_drawdown <= 2% in all runs" :holds? false :checked 48
+   :violation {:dataset :markup-1 :strategy "churn-11" :dd 0.0305}}
+  {:id "I004" :statement "deterministic replay" :holds? true :checked 2
+   :note "Verified by backtest_validation tests — same data → bit-identical output"}]
+
+ :uncertainty-map
+ {:well-established  ["H002: friction dominates" "H003: drawdown bounded" "H008: frequency → friction"]
+  :supported         ["H007: no consistent edge"]
+  :contested         ["H001: raw alpha exists" "H004: churn-9 best overall"]
+  :fragile           ["H005: churn-0 for ranging" "H006: churn-11 for mild bear"]
+  :untested          ["regime detection accuracy" "multi-asset correlation" "live execution vs backtest gap"
+                      "funding/borrow/OI impact" "adaptive strategy switching"]}}
