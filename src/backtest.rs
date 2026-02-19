@@ -229,13 +229,6 @@ fn slippage_price(price: f64, qty: f64, liquidity: f64, k: f64, vol: f64) -> f64
     }
 }
 
-fn latency_step(ts: u64, min: u64, max: u64) -> u64 {
-    if max <= min {
-        return min;
-    }
-    let span = max - min + 1;
-    min + (ts % span)
-}
 
 /// Deterministic latency model with bounded jitter.
 /// Uses a simple xorshift to avoid RNG dependencies and keep replay stable.
