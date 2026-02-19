@@ -1,4 +1,5 @@
 pub mod exchange;
+pub mod data;
 pub mod metrics;
 pub mod risk;
 pub mod state;
