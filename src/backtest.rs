@@ -1,4 +1,5 @@
 use anyhow::{anyhow, Result};
+use serde::{Serialize, Deserialize};
 
 use crate::events::{detect_phase1, EventConfig};
 use crate::features::FeaturePipeline;
@@ -8,7 +9,7 @@ use crate::state::{Config, Fill, MarketState, StrategyInstance};
 use crate::strategy::{Action, MarketAux};
 
 /// Execution mode for backtesting
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub enum ExecMode {
     /// Instant fill at close price (unrealistic but fast)
     Instant,
@@ -20,7 +21,7 @@ pub enum ExecMode {
     Realistic,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ExecConfig {
     pub slippage_k: f64,
     pub fee_rate: f64,
@@ -245,7 +246,7 @@ fn latency_delay(submit_ts: u64, strategy_idx: usize, min: u64, max: u64) -> u64
 }
 
 /// Per-strategy result from a backtest run.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 pub struct StrategyResult {
     pub id: String,
     pub pnl: f64,
@@ -260,12 +261,21 @@ pub struct StrategyResult {
 }
 
 /// Aggregate backtest result with per-strategy breakdown.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 pub struct BacktestResult {
     pub total_pnl: f64,
     pub max_drawdown: f64,
     pub buy_hold_pnl: f64,
     pub strategies: Vec<StrategyResult>,
+    pub config_hash: String,
+    pub candle_count: usize,
+}
+
+impl BacktestResult {
+    /// Serialize to JSON string.
+    pub fn to_json(&self) -> String {
+        serde_json::to_string_pretty(self).unwrap_or_default()
+    }
 }
 
 pub fn run_backtest(cfg: Config, rows: &[CsvRow]) -> Result<(f64, f64)> {
@@ -601,6 +611,8 @@ pub fn run_backtest_full(cfg: Config, rows: &[CsvRow]) -> Result<BacktestResult>
         max_drawdown: max_dd,
         buy_hold_pnl,
         strategies: strat_results,
+        config_hash: cfg.config_hash(),
+        candle_count: rows.len(),
     })
 }
 

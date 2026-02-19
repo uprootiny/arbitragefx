@@ -322,3 +322,55 @@ fn s15_timestamp_sanity() {
         assert!(last_ts - first_ts > 86400, "{} span too short", csv);
     }
 }
+
+// ---------------------------------------------------------------------------
+// S16: Config reproducibility — same config produces same hash
+// ---------------------------------------------------------------------------
+#[test]
+fn s16_config_hash_deterministic() {
+    let cfg1 = Config::from_env();
+    let cfg2 = Config::from_env();
+    assert_eq!(cfg1.config_hash(), cfg2.config_hash(), "same config should produce same hash");
+    // Hash should be 64 hex chars (SHA256)
+    assert_eq!(cfg1.config_hash().len(), 64, "hash should be 64 hex chars");
+}
+
+// ---------------------------------------------------------------------------
+// S17: Config serialization round-trip
+// ---------------------------------------------------------------------------
+#[test]
+fn s17_config_json_round_trip() {
+    let cfg = Config::from_env();
+    let json = cfg.to_json();
+    assert!(json.contains("\"symbol\""), "JSON should contain symbol field");
+    assert!(json.contains("\"entry_threshold\""), "JSON should contain entry_threshold");
+    assert!(json.contains("\"min_hold_candles\""), "JSON should contain min_hold_candles");
+    // Should be valid JSON
+    let parsed: serde_json::Value = serde_json::from_str(&json).expect("config JSON should be valid");
+    assert!(parsed.is_object(), "parsed config should be an object");
+}
+
+// ---------------------------------------------------------------------------
+// S18: BacktestResult includes config_hash and serializes to JSON
+// ---------------------------------------------------------------------------
+#[test]
+fn s18_backtest_result_has_config_hash() {
+    let csv = "data/btc_real_1h.csv";
+    if !Path::new(csv).exists() {
+        return;
+    }
+    let rows = load_rows(csv);
+    let cfg = Config::from_env();
+    let expected_hash = cfg.config_hash();
+    let result = run_backtest_full(cfg, &rows).unwrap();
+
+    assert_eq!(result.config_hash, expected_hash, "result should carry config hash");
+    assert_eq!(result.candle_count, rows.len(), "candle count should match rows");
+
+    // Should serialize to valid JSON
+    let json = result.to_json();
+    let parsed: serde_json::Value = serde_json::from_str(&json).expect("result JSON should be valid");
+    assert!(parsed["config_hash"].is_string());
+    assert!(parsed["strategies"].is_array());
+    assert_eq!(parsed["strategies"].as_array().unwrap().len(), 12);
+}

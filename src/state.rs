@@ -2,8 +2,9 @@ use std::collections::HashMap;
 
 use crate::exchange::Candle as ExCandle;
 use crate::strategy::{IndicatorSnapshot, MarketAux, MarketView, MetricsState, PortfolioState, Strategy, StrategyState};
+use serde::{Serialize, Deserialize};
 
-#[derive(Clone)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct Config {
     pub symbol: String,
     pub candle_granularity: u64,
@@ -111,6 +112,19 @@ impl Config {
     pub fn sleep_until_next_candle(&self, now_ts: u64) -> u64 {
         let next = ((now_ts / self.candle_granularity) + 1) * self.candle_granularity;
         next.saturating_sub(now_ts)
+    }
+
+    /// Serialize config to JSON string.
+    pub fn to_json(&self) -> String {
+        serde_json::to_string_pretty(self).unwrap_or_default()
+    }
+
+    /// Compute SHA256 hash of the serialized config (for reproducibility tracking).
+    pub fn config_hash(&self) -> String {
+        use sha2::{Digest, Sha256};
+        let json = serde_json::to_string(self).unwrap_or_default();
+        let hash = Sha256::digest(json.as_bytes());
+        hex::encode(hash)
     }
 }
 
