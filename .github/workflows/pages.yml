@@ -1,0 +1,231 @@
+name: Deploy docs to GitHub Pages
+
+on:
+  push:
+    branches: ["main"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: "pages"
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build docs site
+        run: |
+          mkdir -p _site
+          # Copy styled HTML docs
+          cp docs/index.html _site/ 2>/dev/null || true
+          # Generate index from markdown
+          cat > _site/index.html << 'HTMLEOF'
+          <!DOCTYPE html>
+          <html lang="en">
+          <head>
+            <meta charset="utf-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1">
+            <title>ArbitrageFX — Documentation</title>
+            <style>
+              :root {
+                --bg: #0d1117;
+                --fg: #c9d1d9;
+                --accent: #58a6ff;
+                --border: #30363d;
+                --card-bg: #161b22;
+                --green: #3fb950;
+                --red: #f85149;
+                --yellow: #d29922;
+                --mono: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace;
+              }
+              * { box-sizing: border-box; margin: 0; padding: 0; }
+              body {
+                font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
+                background: var(--bg);
+                color: var(--fg);
+                line-height: 1.6;
+                padding: 2rem;
+                max-width: 960px;
+                margin: 0 auto;
+              }
+              h1 { color: #f0f6fc; font-size: 2rem; margin-bottom: 0.5rem; }
+              h2 { color: var(--accent); font-size: 1.3rem; margin: 2rem 0 0.5rem; border-bottom: 1px solid var(--border); padding-bottom: 0.3rem; }
+              h3 { color: #f0f6fc; font-size: 1.1rem; margin: 1.5rem 0 0.3rem; }
+              a { color: var(--accent); text-decoration: none; }
+              a:hover { text-decoration: underline; }
+              .subtitle { color: #8b949e; font-size: 0.9rem; margin-bottom: 2rem; }
+              .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 1rem; margin: 1rem 0; }
+              .card {
+                background: var(--card-bg);
+                border: 1px solid var(--border);
+                border-radius: 6px;
+                padding: 1rem;
+              }
+              .card h3 { margin: 0 0 0.5rem; font-size: 1rem; }
+              .card p { color: #8b949e; font-size: 0.85rem; }
+              .badge {
+                display: inline-block;
+                padding: 0.15rem 0.5rem;
+                border-radius: 3px;
+                font-size: 0.75rem;
+                font-family: var(--mono);
+                margin-right: 0.3rem;
+              }
+              .badge-green { background: #0d2818; color: var(--green); border: 1px solid #1a4128; }
+              .badge-yellow { background: #2d1f00; color: var(--yellow); border: 1px solid #4d3800; }
+              .badge-red { background: #2d0000; color: var(--red); border: 1px solid #4d0000; }
+              table { width: 100%; border-collapse: collapse; margin: 1rem 0; font-size: 0.85rem; }
+              th, td { padding: 0.5rem; text-align: left; border-bottom: 1px solid var(--border); }
+              th { color: #f0f6fc; font-weight: 600; }
+              code {
+                background: var(--card-bg);
+                padding: 0.15rem 0.4rem;
+                border-radius: 3px;
+                font-family: var(--mono);
+                font-size: 0.85em;
+              }
+              pre {
+                background: var(--card-bg);
+                border: 1px solid var(--border);
+                border-radius: 6px;
+                padding: 1rem;
+                overflow-x: auto;
+                font-family: var(--mono);
+                font-size: 0.8rem;
+                line-height: 1.5;
+                margin: 1rem 0;
+              }
+              .stv { font-family: var(--mono); font-size: 0.8rem; }
+              .high { color: var(--green); }
+              .mid { color: var(--yellow); }
+              .low { color: var(--red); }
+            </style>
+          </head>
+          <body>
+            <h1>ArbitrageFX</h1>
+            <p class="subtitle">Cryptocurrency backtesting with honest friction accounting and hypothesis-driven evaluation</p>
+
+            <div class="grid">
+              <div class="card">
+                <h3>Tests</h3>
+                <p><span class="badge badge-green">337 passing</span> <span class="badge badge-green">0 failing</span></p>
+                <p>164 unit + 26 validation + 13 smoke + 3 drift</p>
+              </div>
+              <div class="card">
+                <h3>Data</h3>
+                <p><span class="badge badge-green">5 regimes</span> <span class="badge badge-green">7883 candles</span></p>
+                <p>Real BTC/USDT from Binance API, SHA256-verified</p>
+              </div>
+              <div class="card">
+                <h3>Evidence</h3>
+                <p><span class="badge badge-yellow">60 runs</span> <span class="badge badge-yellow">9 hypotheses</span></p>
+                <p>Bayesian truth values updated from backtest results</p>
+              </div>
+            </div>
+
+            <h2>Hypotheses</h2>
+            <table>
+              <tr><th>ID</th><th>Hypothesis</th><th>Strength</th><th>Confidence</th><th>Status</th></tr>
+              <tr><td>H001</td><td>Momentum strategies generate raw alpha</td><td class="stv mid">0.42</td><td class="stv mid">0.72</td><td><span class="badge badge-yellow">contested</span></td></tr>
+              <tr><td>H002</td><td>Friction dominates alpha</td><td class="stv high">0.82</td><td class="stv high">0.80</td><td><span class="badge badge-green">supported</span></td></tr>
+              <tr><td>H003</td><td>Drawdown bounded to &lt;2%</td><td class="stv high">0.95</td><td class="stv high">0.84</td><td><span class="badge badge-green">established</span></td></tr>
+              <tr><td>H004</td><td>churn-9 is best overall</td><td class="stv low">0.35</td><td class="stv mid">0.76</td><td><span class="badge badge-red">fragile</span></td></tr>
+              <tr><td>H005</td><td>churn-0 best for bear/ranging</td><td class="stv mid">0.78</td><td class="stv mid">0.52</td><td><span class="badge badge-yellow">contested</span></td></tr>
+              <tr><td>H006</td><td>churn-11 profits in mild bear</td><td class="stv mid">0.55</td><td class="stv low">0.42</td><td><span class="badge badge-red">fragile</span></td></tr>
+              <tr><td>H007</td><td>No strategy beats no-trade consistently</td><td class="stv mid">0.78</td><td class="stv high">0.80</td><td><span class="badge badge-green">supported</span></td></tr>
+              <tr><td>H008</td><td>Trade frequency drives friction</td><td class="stv high">0.91</td><td class="stv mid">0.76</td><td><span class="badge badge-green">established</span></td></tr>
+              <tr><td>H009</td><td>Edge is capital preservation</td><td class="stv high">0.85</td><td class="stv mid">0.55</td><td><span class="badge badge-green">established</span></td></tr>
+            </table>
+
+            <h2>Architecture</h2>
+            <pre>
+Binance API ──▶ fetch_data.sh ──▶ data/*.csv ──▶ data::analyze_csv()
+                                       │
+                                       ▼
+                              MarketState.on_candle()
+                                       │
+                                       ▼
+                          StrategyInstance.update() × 12
+                                       │
+                                       ▼
+                          RiskEngine.apply_with_price()
+                                       │
+                                       ▼
+                    PendingOrder → latency → slippage → fill → metrics
+                                       │
+                                       ▼
+                    BacktestResult { strategies[], buy_hold_pnl }
+                                       │
+                                       ▼
+                         hypothesis_ledger.edn (Bayesian TVs)
+            </pre>
+
+            <h2>Documentation</h2>
+            <div class="grid">
+              <div class="card">
+                <h3><a href="https://github.com/uprootiny/arbitragefx/blob/main/ARCHITECTURE.md">Architecture</a></h3>
+                <p>System diagram, module map, execution model, risk guards</p>
+              </div>
+              <div class="card">
+                <h3><a href="https://github.com/uprootiny/arbitragefx/blob/main/docs/DESIGN.md">Design</a></h3>
+                <p>What exists, two architecture paths, strategy space</p>
+              </div>
+              <div class="card">
+                <h3><a href="https://github.com/uprootiny/arbitragefx/blob/main/docs/CRITIQUE.md">Critique</a></h3>
+                <p>Honest inventory of wishful thinking and dead code</p>
+              </div>
+              <div class="card">
+                <h3><a href="https://github.com/uprootiny/arbitragefx/blob/main/docs/ROADMAP_NEXT_RELEASE.md">Roadmap</a></h3>
+                <p>v0.2.0 plan: smoke tests and reality grounding</p>
+              </div>
+              <div class="card">
+                <h3><a href="https://github.com/uprootiny/arbitragefx/blob/main/hypothesis_ledger.edn">Hypothesis Ledger</a></h3>
+                <p>9 hypotheses with Bayesian truth values from 60 runs</p>
+              </div>
+              <div class="card">
+                <h3><a href="https://github.com/uprootiny/arbitragefx/blob/main/docs/ROADMAP_BACKTEST.md">Backtest Roadmap</a></h3>
+                <p>52-ticket realism roadmap (34 complete)</p>
+              </div>
+            </div>
+
+            <h2>Quick Start</h2>
+            <pre>
+# Run backtest on real data
+cargo run --release --bin backtest -- data/btc_real_1h.csv
+
+# Run all 337 tests
+cargo test
+
+# Fetch fresh data + run full pipeline
+./scripts/pipeline.sh
+            </pre>
+
+            <p style="margin-top: 2rem; color: #484f58; font-size: 0.8rem;">
+              Generated from <a href="https://github.com/uprootiny/arbitragefx">uprootiny/arbitragefx</a>
+            </p>
+          </body>
+          </html>
+          HTMLEOF
+
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
+  deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    needs: build
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
