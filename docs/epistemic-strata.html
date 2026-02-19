@@ -1,0 +1,392 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Epistemic Strata Views</title>
+  <style>
+    :root {
+      --bg: #0b0e12;
+      --panel: #141a22;
+      --panel-2: #0f141b;
+      --ink: #e7e3d7;
+      --muted: #9aa3ab;
+      --line: #2a323a;
+      --amber: #f2a65a;
+      --aqua: #5bd1d7;
+      --rose: #e05f5f;
+      --olive: #7bd389;
+      --violet: #9b7de5;
+      --shadow: 0 16px 40px rgba(0,0,0,0.45);
+      --mono: "IBM Plex Mono", "JetBrains Mono", "SF Mono", Menlo, Consolas, monospace;
+      --serif: "Iowan Old Style", "Palatino Linotype", "Book Antiqua", serif;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: var(--mono);
+      background:
+        radial-gradient(1200px 900px at 75% -10%, rgba(91,209,215,0.08), transparent 60%),
+        radial-gradient(900px 700px at 15% 10%, rgba(242,166,90,0.16), transparent 65%),
+        var(--bg);
+      color: var(--ink);
+    }
+    header {
+      position: sticky;
+      top: 0;
+      z-index: 10;
+      background: linear-gradient(180deg, rgba(20,26,34,0.98), rgba(12,17,23,0.94));
+      border-bottom: 1px solid var(--line);
+      backdrop-filter: blur(8px);
+    }
+    header::after {
+      content: "";
+      display: block;
+      height: 2px;
+      background: linear-gradient(90deg, var(--amber), var(--aqua), var(--violet));
+      opacity: 0.7;
+    }
+    .header-inner {
+      max-width: 1400px;
+      margin: 0 auto;
+      padding: 12px 16px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+    .brand h1 {
+      margin: 0;
+      font-family: var(--serif);
+      font-size: 20px;
+      letter-spacing: 0.5px;
+    }
+    .brand .sub { color: var(--muted); font-size: 12px; }
+    .toolbar { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+    .btn {
+      font-family: var(--mono);
+      font-size: 12px;
+      padding: 6px 10px;
+      border-radius: 8px;
+      border: 1px solid var(--line);
+      background: rgba(42,50,58,0.6);
+      color: var(--ink);
+      cursor: pointer;
+    }
+    .btn.active { border-color: var(--aqua); background: rgba(91,209,215,0.15); }
+    .frame {
+      max-width: 1400px;
+      margin: 20px auto;
+      padding: 0 16px 60px;
+      display: grid;
+      gap: 16px;
+    }
+    .panel {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      box-shadow: var(--shadow);
+      overflow: hidden;
+    }
+    .panel-hd {
+      padding: 10px 12px;
+      border-bottom: 1px solid var(--line);
+      background: linear-gradient(180deg, rgba(21,26,34,1), rgba(21,26,34,0.88));
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 10px;
+    }
+    .panel-hd .title {
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.9px;
+      color: var(--amber);
+      font-weight: 800;
+    }
+    .panel-bd { padding: 12px; }
+
+    .grid { display: grid; gap: 16px; }
+    .grid.cols-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .grid.cols-4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+    .grid.cols-8 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+    .grid.cols-10 { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+    @media (max-width: 1100px) {
+      .grid.cols-2, .grid.cols-4, .grid.cols-8, .grid.cols-10 { grid-template-columns: 1fr; }
+    }
+
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 2px 8px;
+      border-radius: 999px;
+      border: 1px solid var(--line);
+      color: var(--muted);
+      font-size: 11px;
+    }
+
+    .strata { display: grid; gap: 8px; }
+    .stratum {
+      border: 1px solid var(--line);
+      border-left: 3px solid var(--aqua);
+      border-radius: 10px;
+      padding: 8px;
+      background: rgba(13,17,23,0.5);
+    }
+    .stratum .label { font-size: 11px; text-transform: uppercase; letter-spacing: 0.6px; color: var(--muted); }
+    .stratum .value { font-size: 12px; margin-top: 4px; }
+
+    .legend { display: grid; gap: 6px; font-size: 11px; }
+    .legend-row { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+    .dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+
+    .tag { font-size: 10px; border-radius: 999px; padding: 2px 6px; border: 1px solid var(--line); color: var(--muted); }
+
+    .mono { font-family: var(--mono); font-size: 12px; color: var(--muted); }
+    .muted { color: var(--muted); }
+
+    .flow {
+      border: 1px dashed rgba(155,125,229,0.5);
+      border-radius: 10px;
+      padding: 8px;
+      background: rgba(13,17,23,0.4);
+      font-size: 12px;
+    }
+
+    .timeline { display: grid; gap: 6px; }
+    .tick { border-left: 2px solid var(--line); padding-left: 8px; font-size: 12px; color: var(--muted); }
+
+    .stat { display: flex; justify-content: space-between; font-size: 12px; border-bottom: 1px dashed var(--line); padding: 4px 0; }
+    .stat:last-child { border-bottom: 0; }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="header-inner">
+      <div class="brand">
+        <h1>Epistemic Strata Views</h1>
+        <div class="sub">Multiple views onto one datastore state</div>
+      </div>
+      <div class="toolbar">
+        <span class="pill" id="status">view: 2</span>
+        <button class="btn active" data-n="2">n=2</button>
+        <button class="btn" data-n="4">n=4</button>
+        <button class="btn" data-n="8">n=8</button>
+        <button class="btn" data-n="10">n=10</button>
+      </div>
+    </div>
+  </header>
+
+  <main class="frame">
+    <section class="panel">
+      <div class="panel-hd">
+        <div class="title">Shared Datastore State</div>
+        <span class="tag">single source</span>
+      </div>
+      <div class="panel-bd">
+        <div class="stat"><span>state id</span><strong id="state-id"></strong></div>
+        <div class="stat"><span>as of</span><strong id="state-time"></strong></div>
+        <div class="stat"><span>datasets</span><strong id="state-datasets"></strong></div>
+        <div class="stat"><span>signals</span><strong id="state-signals"></strong></div>
+        <div class="stat"><span>invariants</span><strong id="state-invariants"></strong></div>
+      </div>
+    </section>
+
+    <section class="grid cols-2" id="view-2">
+      <div class="panel">
+        <div class="panel-hd"><div class="title">Boundary Map</div></div>
+        <div class="panel-bd" id="boundary-map"></div>
+      </div>
+      <div class="panel">
+        <div class="panel-hd"><div class="title">Legend</div></div>
+        <div class="panel-bd" id="legend"></div>
+      </div>
+    </section>
+
+    <section class="grid cols-4" id="view-4" style="display:none">
+      <div class="panel">
+        <div class="panel-hd"><div class="title">Boundary Map</div></div>
+        <div class="panel-bd" id="boundary-map-4"></div>
+      </div>
+      <div class="panel">
+        <div class="panel-hd"><div class="title">Legend</div></div>
+        <div class="panel-bd" id="legend-4"></div>
+      </div>
+      <div class="panel">
+        <div class="panel-hd"><div class="title">Use Trace</div></div>
+        <div class="panel-bd" id="use-trace"></div>
+      </div>
+      <div class="panel">
+        <div class="panel-hd"><div class="title">Timeline</div></div>
+        <div class="panel-bd" id="timeline"></div>
+      </div>
+    </section>
+
+    <section class="grid cols-8" id="view-8" style="display:none"></section>
+    <section class="grid cols-10" id="view-10" style="display:none"></section>
+  </main>
+
+  <script>
+    const strataColors = {
+      asserted: 'var(--aqua)',
+      verified: 'var(--olive)',
+      used: 'var(--amber)',
+      invariant: 'var(--violet)',
+      assumed: 'var(--rose)',
+      inferred: 'var(--aqua)',
+      extrapolated: 'var(--amber)',
+      aspirational: 'var(--rose)'
+    };
+
+    const state = {
+      id: 'state-2026-02-02T1530Z',
+      asOf: '2026-02-02 15:30:00Z',
+      datasets: 6,
+      signals: 12,
+      invariants: 5,
+      boundaries: [
+        { label: 'just asserted', count: 4, strata: 'asserted' },
+        { label: 'verified', count: 6, strata: 'verified' },
+        { label: 'used', count: 5, strata: 'used' },
+        { label: 'invariant-abiding', count: 3, strata: 'invariant' },
+        { label: 'assumed', count: 7, strata: 'assumed' },
+        { label: 'inferred', count: 5, strata: 'inferred' },
+        { label: 'extrapolated', count: 2, strata: 'extrapolated' },
+        { label: 'aspirational', count: 4, strata: 'aspirational' }
+      ],
+      trace: [
+        { step: 'signal/rsi', strata: 'used', note: 'consumed in strategy' },
+        { step: 'data/ohlc', strata: 'verified', note: 'validated feed' },
+        { step: 'risk/max_drawdown', strata: 'invariant', note: 'enforced' },
+        { step: 'latency', strata: 'assumed', note: 'assumed stable' }
+      ],
+      timeline: [
+        'data snapshot persisted',
+        'invariants evaluated',
+        'signals emitted',
+        'orders sized',
+        'audit record written'
+      ]
+    };
+
+    function setText(id, text) {
+      const el = document.getElementById(id);
+      if (el) el.textContent = text;
+    }
+
+    function renderState() {
+      setText('state-id', state.id);
+      setText('state-time', state.asOf);
+      setText('state-datasets', String(state.datasets));
+      setText('state-signals', String(state.signals));
+      setText('state-invariants', String(state.invariants));
+    }
+
+    function renderBoundaryMap(targetId) {
+      const el = document.getElementById(targetId);
+      if (!el) return;
+      el.innerHTML = '';
+      const wrap = document.createElement('div');
+      wrap.className = 'strata';
+      state.boundaries.forEach(b => {
+        const row = document.createElement('div');
+        row.className = 'stratum';
+        row.style.borderLeftColor = `var(${strataColors[b.strata].replace('var(', '').replace(')', '')})`;
+        row.innerHTML = `<div class="label">${b.label}</div><div class="value">${b.count} items</div>`;
+        wrap.appendChild(row);
+      });
+      el.appendChild(wrap);
+    }
+
+    function renderLegend(targetId) {
+      const el = document.getElementById(targetId);
+      if (!el) return;
+      el.innerHTML = '';
+      const wrap = document.createElement('div');
+      wrap.className = 'legend';
+      Object.entries(strataColors).forEach(([k, v]) => {
+        const row = document.createElement('div');
+        row.className = 'legend-row';
+        row.innerHTML = `<span>${k}</span><span class="dot" style="background:${v}"></span>`;
+        wrap.appendChild(row);
+      });
+      el.appendChild(wrap);
+    }
+
+    function renderUseTrace() {
+      const el = document.getElementById('use-trace');
+      if (!el) return;
+      el.innerHTML = '';
+      state.trace.forEach(t => {
+        const row = document.createElement('div');
+        row.className = 'flow';
+        row.innerHTML = `<div>${t.step}</div><div class="muted">${t.note}</div>`;
+        el.appendChild(row);
+      });
+    }
+
+    function renderTimeline() {
+      const el = document.getElementById('timeline');
+      if (!el) return;
+      el.innerHTML = '';
+      const wrap = document.createElement('div');
+      wrap.className = 'timeline';
+      state.timeline.forEach(t => {
+        const row = document.createElement('div');
+        row.className = 'tick';
+        row.textContent = t;
+        wrap.appendChild(row);
+      });
+      el.appendChild(wrap);
+    }
+
+    function renderStrataGrid(targetId, limit) {
+      const el = document.getElementById(targetId);
+      if (!el) return;
+      el.innerHTML = '';
+      state.boundaries.slice(0, limit).forEach(b => {
+        const panel = document.createElement('div');
+        panel.className = 'panel';
+        panel.innerHTML = `
+          <div class="panel-hd"><div class="title">${b.label}</div></div>
+          <div class="panel-bd">
+            <div class="stratum" style="border-left-color:${strataColors[b.strata]}">
+              <div class="label">${b.strata}</div>
+              <div class="value">${b.count} items</div>
+            </div>
+            <div class="mono" style="margin-top:6px;">boundary: ${b.label}</div>
+          </div>
+        `;
+        el.appendChild(panel);
+      });
+    }
+
+    function setView(n) {
+      document.getElementById('view-2').style.display = n === 2 ? '' : 'none';
+      document.getElementById('view-4').style.display = n === 4 ? '' : 'none';
+      document.getElementById('view-8').style.display = n === 8 ? '' : 'none';
+      document.getElementById('view-10').style.display = n === 10 ? '' : 'none';
+      document.getElementById('status').textContent = `view: ${n}`;
+      document.querySelectorAll('.btn[data-n]').forEach(btn => {
+        btn.classList.toggle('active', Number(btn.dataset.n) === n);
+      });
+    }
+
+    renderState();
+    renderBoundaryMap('boundary-map');
+    renderLegend('legend');
+    renderBoundaryMap('boundary-map-4');
+    renderLegend('legend-4');
+    renderUseTrace();
+    renderTimeline();
+    renderStrataGrid('view-8', 8);
+    renderStrataGrid('view-10', 10);
+
+    document.querySelectorAll('.btn[data-n]').forEach(btn => {
+      btn.addEventListener('click', () => setView(Number(btn.dataset.n)));
+    });
+  </script>
+</body>
+</html>

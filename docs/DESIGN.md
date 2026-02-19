@@ -1,259 +1,114 @@
-# System Design Document
+# ArbitrageFX — Design Document v2
 
-**Project**: arbitragefx
-**Version**: 0.1.0
-**Status**: Development
+**Date:** 2026-02-18
+**Status:** Living document, updated from real backtest evidence
 
----
+## 1. What This System Is
 
-## 1. Overview
+A Rust-based cryptocurrency backtesting and (aspirationally) live-trading workbench.
+It ingests OHLCV candle data, runs momentum/carry/event-driven strategies through
+a friction-aware execution simulator, and reports PnL with honest accounting of
+fees, slippage, latency, and partial fills.
 
-### 1.1 Purpose
+## 2. Architecture: Two Parallel Paths
 
-arbitragefx is an ethically-aligned cryptocurrency trading system that:
-- Executes momentum and mean-reversion strategies on crypto perpetual markets
-- Integrates Buddhist ethics framework to prevent harmful trading patterns
-- Maintains deterministic replay capability via WAL-based state management
-- Supports both backtesting and live execution modes
+The codebase contains **two complete architectures** that do not share a runtime path:
 
-### 1.2 Design Principles
-
-1. **Determinism**: Same inputs → same outputs (for replay/audit)
-2. **Simplicity**: Unix philosophy - do one thing well
-3. **Safety**: Fail-safe defaults, position limits, circuit breakers
-4. **Observability**: Structured logging, metrics, clear state transitions
-
----
-
-## 2. Architecture
-
-### 2.1 Component Diagram
-
+### Legacy Loop (production-tested)
 ```
-┌─────────────────────────────────────────────────────────────────┐
-│                         Main Loop                                │
-│  ┌─────────┐  ┌─────────┐  ┌─────────┐  ┌─────────┐            │
-│  │  Feed   │→│  State  │→│Strategy │→│  Risk   │→│ Adapter │  │
-│  │ Manager │  │ Manager │  │ Engine  │  │ Engine  │  │ (Exec)  │  │
-│  └─────────┘  └─────────┘  └─────────┘  └─────────┘  └─────────┘  │
-│       ↑                                                    ↓      │
-│  ┌─────────┐                                         ┌─────────┐  │
-│  │   WAL   │←────────────────────────────────────────│  Fills  │  │
-│  └─────────┘                                         └─────────┘  │
-└─────────────────────────────────────────────────────────────────┘
+CSV → parse_csv_line → MarketState.on_candle → StrategyInstance.update
+    → RiskEngine.apply → PendingOrder queue → slippage/fill sim → metrics
 ```
+- Entry: `src/bin/backtest.rs` → `backtest::run_backtest()`
+- State: `MarketState` + `StrategyInstance` + `RiskEngine` (all in `state.rs`)
+- Strategies: `SimpleMomentum` (12 churn variants), `CarryOpportunistic` (3 variants)
+- This is what actually runs. 324 tests pass against it.
 
-### 2.2 Data Flow
-
+### Engine Loop (aspirational)
 ```
-Candle → Indicators → MarketView → Strategy.update() → Action
-                                                         ↓
-                                   RiskEngine.apply() ← Action
-                                         ↓
-                                   GuardedAction → Adapter.submit()
-                                                         ↓
-                                   Fill → Portfolio.apply_fill()
-                                         ↓
-                                   Metrics.update()
+Event → EventBus → Reducer(State, Event) → (State', Commands)
 ```
+- Entry: `src/bin/engine_backtest.rs`, `src/bin/engine_loop.rs`
+- State: `EngineState` (deterministically hashable)
+- Pure reducer: `engine/reducer.rs` (834 lines, 10 tests)
+- Ethics guards: `engine/ethics.rs` (three poisons)
+- Narrative regimes: `engine/narrative_detector.rs`
+- This is the better architecture. It is not wired to production data paths.
 
-### 2.3 Module Responsibilities
+### The Gap
+The engine loop has no CSV ingestion, no real strategy implementations plugged in,
+and no connection to the hypothesis ledger. The legacy loop works but has strategies
+baked into `state.rs` (1368 lines of mixed concerns).
 
-| Module | Responsibility | Key Types |
-|--------|----------------|-----------|
-| `state.rs` | Configuration, market state, strategy instances | `Config`, `MarketState`, `StrategyInstance` |
-| `strategy.rs` | Trading logic, signal generation | `Action`, `MarketView`, `PortfolioState` |
-| `risk.rs` | Position limits, guards, circuit breakers | `RiskEngine`, `RiskVerdict` |
-| `adapter/` | Exchange abstraction | `UnifiedAdapter`, `OrderRequest` |
-| `feed/` | Market data ingestion | `Candle`, `MarketAux` |
-| `engine/` | Core loop, backtest, logging | `engine_loop`, `Ledger`, `Journal` |
+## 3. Strategy Design Space
 
----
+### What Exists (Legacy — actually runs)
 
-## 3. Strategy Design
+| Factory | Count | Type | Parameterization |
+|---------|-------|------|------------------|
+| `build_churn_set` | 12 | `SimpleMomentum` | 4x3 grid over (entry_th, edge_scale, TP, SL) |
+| `build_carry_event_set` | 3 | `CarryOpportunistic` | Staggered start delays |
+| `build_default_set` | 3 | `SimpleMomentum` | Staggered start delays |
 
-### 3.1 Signal Generation
+### What Exists (Composable — never instantiated)
+Seven strategy types in `strategies.rs` (808 lines): Momentum, MeanReversion,
+FundingCarry, VolatilityBreakout, EventDriven, MultiFactor, Adaptive.
+These implement the `Strategy` trait but are never used by any binary.
 
-The SimpleMomentum strategy generates signals based on:
+## 4. Execution Model
 
-```
-score = 1.0 × z_momentum
-      + 0.3 × z_vol
-      + 0.5 × z_volume_spike
-      + stretch_contrib (conditional on trend)
+Four modes with increasing realism:
 
-if score > entry_threshold AND trend_confirms:
-    → Buy
-if score < -entry_threshold AND trend_confirms:
-    → Sell
-```
+| Mode | Slippage | Fees | Latency | Fill Ratio | Use |
+|------|----------|------|---------|------------|-----|
+| Instant | 0 | 0 | 0 | 100% | Unit tests |
+| Market | k-scaled | taker | bounded jitter | 100% | Default backtest |
+| Limit | low | maker | higher jitter | 80% | Passive strategies |
+| Realistic | vol-scaled | blended | full model | 60% | Honest assessment |
 
-### 3.2 Trend Filter
+Deterministic: latency uses xorshift from (submit_ts, strategy_idx), not RNG.
 
-```rust
-in_uptrend = ema_fast > ema_slow
-in_downtrend = ema_fast < ema_slow
-strong_trend = |ema_fast - ema_slow| / ema_slow > 0.01
+## 5. Risk Engine
 
-// Mean reversion only allowed when:
-// - Aligned with trend, OR
-// - Trend is weak
-```
+Applied as a guard on every proposed action. In order:
+1. Kill file check (`/tmp/STOP`)
+2. Loss cooldown (600s default)
+3. Daily trade limit (20/day)
+4. Daily loss limit (2% equity, including unrealized MTM)
+5. Exposure limit (5% of equity)
 
-### 3.3 Exit Conditions
+## 6. Data
 
-| Condition | Action |
-|-----------|--------|
-| move_pct >= take_profit | Close |
-| move_pct <= -stop_loss | Close |
-| elapsed >= time_stop | Close |
-| score < exit_threshold | Close |
+### Real Datasets (from Binance public API)
+| File | Regime | Candles | Move | Period |
+|------|--------|---------|------|--------|
+| btc_real_1h.csv | Strong Bear | 1000 | -27% | Jan-Feb 2026 |
+| btc_bull_1h.csv | Strong Bull | 2209 | +49% | Oct-Dec 2024 |
+| btc_range_1h.csv | Ranging | 2209 | +1% | Jul-Sep 2024 |
+| btc_bear2_1h.csv | Mild Bear | 1465 | -2% | Mar-May 2024 |
 
----
+## 7. What We Know (from hypothesis_ledger.edn)
 
-## 4. Risk Management
+| ID | Hypothesis | Strength | Confidence |
+|----|-----------|----------|------------|
+| H002 | Friction dominates alpha in all regimes | 0.88 | 0.75 |
+| H003 | Position sizing limits drawdown to <2% | 0.95 | 0.80 |
+| H007 | No strategy consistently beats no-trade | 0.82 | 0.75 |
+| H008 | Trade frequency is the primary friction driver | 0.90 | 0.70 |
 
-### 4.1 Position Limits
+The system preserves capital well but does not generate consistent returns.
 
-```rust
-max_position = equity × max_position_pct / price
-// Default: 5% of equity
-```
+## 8. Config
 
-### 4.2 Circuit Breakers
+54 parameters, all from environment variables. No config file, no CLI args.
+Good for containers, bad for reproducible experiments (no config snapshotting).
 
-| Trigger | Response |
-|---------|----------|
-| 3 consecutive losses | Pause 1 hour |
-| 5 losses in rolling window | Halt trading |
-| Fill slippage > 2% | Halt trading |
-| Reconciliation drift > 2% | Halt trading |
+## 9. Module Map
 
-### 4.3 Ethical Guards (Three Poisons)
+25 top-level modules, ~15,700 lines of library code, ~4,000 lines of binaries.
+23 binaries. 258 tests (all pass).
 
-| Poison | Guard | Threshold |
-|--------|-------|-----------|
-| Greed | Overtrading | > 10 trades/day |
-| Aversion | Revenge trading | < 5 min since loss |
-| Delusion | Noise trading | score < edge_hurdle |
-
----
-
-## 5. State Management
-
-### 5.1 WAL Structure
-
-```rust
-enum WalEntry {
-    Intent { ts, strategy_id, action, params_hash },
-    Submit { ts, intent_id, order_id, params_hash },
-    Fill { ts, intent_id, params_hash, price, qty, fee },
-    Cancel { ts, intent_id, params_hash },
-    Snapshot { ts, strategy_id, state_json },
-}
-```
-
-### 5.2 Recovery Protocol
-
-1. Read WAL from last valid entry
-2. Replay events to rebuild state
-3. Reconcile with exchange via API
-4. Resume from consistent state
-
----
-
-## 6. Configuration
-
-### 6.1 Critical Parameters
-
-| Parameter | Default | Range | Impact |
-|-----------|---------|-------|--------|
-| entry_threshold | 1.2 | 0.8-2.5 | Trade frequency |
-| edge_hurdle | 0.003 | 0.001-0.012 | Signal quality |
-| stop_loss | 0.004 | 0.002-0.008 | Risk per trade |
-| take_profit | 0.006 | 0.003-0.015 | Reward target |
-| position_size | 0.001 | 0.0005-0.01 | Capital at risk |
-
-### 6.2 Timeframe Recommendations
-
-| Timeframe | entry_threshold | edge_hurdle | stop_loss |
-|-----------|-----------------|-------------|-----------|
-| 1-5 min | 1.0-1.5 | 0.002-0.004 | 0.003 |
-| 15-30 min | 1.5-2.0 | 0.004-0.006 | 0.005 |
-| 1-4 hour | 2.0-2.5 | 0.008-0.012 | 0.008 |
-
----
-
-## 7. Testing Strategy
-
-### 7.1 Test Levels
-
-| Level | Scope | Coverage |
-|-------|-------|----------|
-| Unit | Individual functions | 80%+ |
-| Integration | Module interactions | 60%+ |
-| Backtest | Full system on historical | 90%+ |
-| Paper | Full system live (no real money) | 100% |
-
-### 7.2 Key Invariants
-
-```rust
-// Portfolio
-assert!(cash + position × price ≈ equity)
-assert!(position.abs() <= max_position)
-
-// Strategy
-assert!(trades_today <= daily_limit)
-assert!(last_trade_ts >= last_loss_ts || cooldown_elapsed)
-
-// Risk
-assert!(drawdown <= max_drawdown_limit)
-```
-
----
-
-## 8. Deployment
-
-### 8.1 Environment Variables
-
-```bash
-# Required
-BINANCE_API_KEY=xxx
-BINANCE_API_SECRET=xxx
-SYMBOL=BTCUSDT
-
-# Recommended
-ENTRY_TH=1.5
-EDGE_HURDLE=0.006
-POSITION_SIZE=0.001
-```
-
-### 8.2 Startup Checklist
-
-- [ ] API keys configured
-- [ ] WAL path writable
-- [ ] Kill file path accessible
-- [ ] Network connectivity to exchange
-- [ ] Sufficient balance for initial position
-
----
-
-## 9. Future Work
-
-1. **Multi-exchange**: Support Kraken, OKX alongside Binance
-2. **Multi-asset**: Portfolio optimization across BTC, ETH, SOL
-3. **ML Integration**: Learned entry/exit thresholds
-4. **Real-time Dashboard**: Grafana/Prometheus metrics
-5. **Automated Rebalancing**: Cross-venue arbitrage
-
----
-
-## Appendix A: Glossary
-
-| Term | Definition |
-|------|------------|
-| Edge Hurdle | Minimum expected profit to take a trade |
-| Z-score | Standard deviations from rolling mean |
-| Regime | Market condition (trending vs ranging) |
-| WAL | Write-Ahead Log for crash recovery |
-| Three Poisons | Buddhist concept: greed, aversion, delusion |
+Core path: `strategy.rs` -> `state.rs` -> `backtest.rs` -> `risk.rs`
+Engine path: `engine/events.rs` -> `engine/state.rs` -> `engine/reducer.rs`
+Support: `indicators.rs`, `signals.rs`, `filters.rs`, `sizing.rs`, `features.rs`
+Infra: `exchange/`, `feed/`, `adapter/`, `reliability/`, `verify/`, `logging.rs`

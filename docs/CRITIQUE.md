@@ -1,239 +1,154 @@
-# Expert Critique
+# ArbitrageFX — Critique: Wishful Thinking Inventory
 
-**Date**: 2026-02-02 (Updated)
-**Perspective**: Adversarial Review
-
----
-
-## Executive Summary
-
-This system shows promise and has addressed several fundamental concerns. ~~The core problem: **it's optimized for backtest performance, not live trading reality**.~~ **Update**: Execution model now includes fill probability simulation, showing 0/33 strategies profitable under realistic conditions.
+**Date:** 2026-02-18
+**Purpose:** Honest assessment of where the codebase claims more than it delivers.
 
 ---
 
-## Status Updates
+## 1. Two Architectures, Zero Convergence
 
-| Critique | Status | Notes |
-|----------|--------|-------|
-| Survivorship Bias | **Mitigated** | Extended to 180 days, 33 hypotheses, all unprofitable |
-| Execution Assumptions | **Fixed** | Fill probability model added, adverse selection modeled |
-| Zero Fees Misleading | **Fixed** | Maker vs taker explicitly compared, friction quantified |
-| Sample Size | **Fixed** | 5000 bars (180+ days) tested |
-| Ethics Framework | Partial | Guards implemented, need rigorous testing |
-| Position Sizing | **Fixed** | Kelly sizing added to risk.rs |
-| Stress Testing | **Fixed** | 1.25M bars/sec parallel, no OOM |
-| Metrics Misleading | **Fixed** | Expectancy tracking added |
+The engine/ directory (3,964 lines) implements a beautiful event-sourced reducer
+architecture. The actual backtest runs through `state.rs` + `backtest.rs`, which
+is a mutable-state imperative loop. These share no code paths.
 
----
+**The wishful thinking:** "We have a pure functional event-sourced architecture."
+**The reality:** We have a working imperative loop AND an untested functional
+skeleton. The engine_backtest binary exists but is not used for any hypothesis
+testing, sweep, or validation run.
 
-## Critical Issues
+**Cost:** Every improvement to the legacy loop (friction models, strategy variants)
+must eventually be reimplemented in the engine, or the engine must be abandoned.
+Neither has happened.
 
-### 1. Survivorship Bias in Hypothesis Selection
+## 2. strategies.rs: 808 Lines of Dead Code
 
-**Problem**: You ran 29 hypotheses on 1000 bars and selected the best. This is textbook p-hacking.
+Seven composable strategy types (`MomentumStrategy`, `MeanReversionStrategy`,
+`FundingCarryStrategy`, `VolatilityBreakoutStrategy`, `EventDrivenStrategy`,
+`MultiFactorStrategy`, `AdaptiveStrategy`) implement the `Strategy` trait.
 
-**Evidence**:
-- `opt_swing` on 5m: +$11.81 (rank 1 of 29)
-- `edge_vhigh` on 1h: +$20.16 (rank 1 of 29)
+**None of them are instantiated by any binary.**
 
-**Question**: What's the probability that the best of 29 random strategies shows positive returns on any dataset?
+The actual backtests use `SimpleMomentum` and `CarryOpportunistic` from `state.rs`.
+The composable strategies exist to prove the design is extensible. They prove
+nothing about alpha.
 
-**Calculation**:
+**Cost:** 808 lines that create the impression of strategic diversity while
+all real results come from one strategy with parameter sweeps.
+
+## 3. signals.rs: A Library Nobody Calls
+
+16 signal functions (momentum, mean_reversion, trend_strength, vwap_deviation,
+vol_breakout, climax_reversal, funding_carry, etc.)
+
+These are consumed only by the dead `strategies.rs`. The live `SimpleMomentum`
+computes its own z-score blend inline.
+
+## 4. The Epistemic Server Lies
+
+`src/epistemic.rs` -> `EpistemicState::from_system()` returns **hardcoded literals**.
+It claims to scan the codebase and report verification strata. It does not.
+The numbers it serves are fiction presented as introspection.
+
+The dashboard at port 42280 displays these lies as if they were computed.
+
+## 5. 23 Binaries, 1 Workflow
+
+The codebase has 23 binaries. The actual workflow is:
 ```
-P(at least one positive) = 1 - P(all negative)^29
-                        ≈ 1 - 0.5^29
-                        ≈ 99.9999998%
+cargo run --bin backtest -- data/btc_real_1h.csv
 ```
+That's it. The other 22 binaries are:
+- 5 that don't compile without specific data/config
+- 8 that duplicate functionality of others
+- 4 stress/fuzz tools that have never caught a bug
+- 3 that analyze logs that are never generated in normal operation
+- 2 skeleton demos
 
-Even random strategies would produce "winners" with this methodology.
+**Cost:** Compilation time. Every `cargo test` builds all 23 binaries.
 
-**Recommendation**: Walk-forward validation with strict train/test separation.
+## 6. "Hypothesis-Driven Research" Without the Loop
 
----
+`hypothesis.rs` (828 lines) and `src/bin/research_lab.rs` (679 lines) implement
+a structured hypothesis tracking system. The hypothesis_ledger.edn was built
+**manually** by running backtests and interpreting output.
 
-### 2. Execution Assumptions Are Unrealistic
+There is no automated path from "run backtest" -> "update hypothesis truth values."
 
-**Problem**: The backtest assumes:
-- Instant fills at close price
-- No partial fills
-- No queue position effects
-- Perfect API connectivity
+## 7. Config: 54 Environment Variables, Zero Snapshots
 
-**Reality**:
-- Market orders slip, especially in volatile periods
-- Limit orders may not fill at all
-- Large orders move price
-- APIs have latency and failures
+Every run's configuration is determined by environment variables. There is no
+mechanism to:
+- Record which config produced which results
+- Diff configs between runs
+- Restore a previous config
+- Validate that a config is internally consistent
 
-**Evidence**: The system shows +$20.16 on `edge_vhigh` with only 3 trades. What if 1 of those 3 doesn't fill?
+## 8. The "Realistic" Execution Mode Isn't
 
-**Recommendation**: Add fill probability model, partial fill handling.
+`ExecConfig::realistic()` uses:
+- `slippage_k: 0.0005` — plausible but not calibrated to any real orderbook
+- `adverse_selection: 0.3` — pulled from thin air
+- `vol_slip_mult: 1.5` — same
 
----
+None of these parameters are derived from observed fill data.
 
-### 3. The "Zero Fees" Results Are Misleading
+## 9. Data Provenance Is Partial
 
-**Problem**: `fee_zero` and `opt_swing` (which assumes maker rebates) dominate the leaderboard. But:
-- Maker rebates require fills at limit prices
-- In trending markets, limits on the "wrong" side never fill
-- The backtest doesn't model fill probability
+The four regime datasets have SHA256 hashes. Good. But:
+- The older datasets (btc_5m_30d.csv, btc_1h_180d.csv) have unknown provenance
+- No dataset records its fetch timestamp or API parameters
+- The train/test splits were created by an unknown process
+- `btc_sim.csv` is synthetic but not labeled as such
 
-**Question**: If you place a limit buy at the current price while price is falling, what's your fill probability?
+## 10. "Live Trading" Is Theoretical
 
-**Answer**: Near 100%—but you immediately have adverse selection (you bought something that's still falling).
+The codebase has exchange traits, WebSocket feeds, WAL, reconciliation, kill switch,
+circuit breaker. But:
+- No evidence of a single live trade ever executed
+- No paper trading results
+- No deployment configuration, monitoring, or alerting
 
-**Recommendation**: Model fill probability as function of price direction.
+## 11. The Narrative Detector Has No Evidence
 
----
+`NarrativeRegime` classifies markets as Grounded/Uncertain/NarrativeDriven/Reflexive
+and multiplies position sizes by 1.0/0.7/0.3/0.0. The thresholds were chosen
+by intuition. There is no backtest showing this improves returns.
 
-### 4. Sample Size Issues
+## 12. Test Coverage Is Shallow Where It Matters
 
-**Problem**: 1000 bars of 5-minute data = ~3.5 days. This is not enough to capture:
-- Weekly patterns (funding settlements)
-- Monthly patterns (options expiry)
-- Macro regime changes
+258 tests sounds substantial. But:
+- `SimpleMomentum.update()` (the actual trading decision) has **zero direct tests**
+- No test verifies that a strategy produces expected trades on known data
+- The backtest_validation tests verify execution mechanics, not strategy correctness
+- `state.rs` tests are mostly for RingBuffer and Config parsing
 
-**Evidence**: The test period was a -12.5% bear move. How does the system perform in:
-- Bull markets?
-- Sideways chop?
-- Flash crashes?
+## 13. indicators.rs: Comprehensive but Disconnected
 
-**Recommendation**: Minimum 6 months of data across multiple market conditions.
+718 lines implementing EMA, SMA, RSI, MACD, Bollinger Bands, ATR, etc.
+Used by: `filters.rs` (which is used by nobody in the backtest path).
+The actual backtest uses `IndicatorState` from `state.rs`, which computes its
+own indicators inline.
 
----
+## 14. Documentation Debt
 
-### 5. The Ethics Framework Is Cosmetic
-
-**Problem**: The "Three Poisons" guards are mentioned but not rigorously tested.
-
-**Questions**:
-- Does the "greed guard" actually prevent overtrading? (507 trades on 1000 bars suggests no)
-- Does the "aversion guard" prevent revenge trading? (No test coverage)
-- Does the "delusion guard" filter noise? (Low edge hurdle defaults suggest no)
-
-**Evidence**: The default parameters produce unprofitable results. The "ethical" guardrails didn't prevent this.
-
-**Recommendation**: Either remove the ethics framing or implement it rigorously with tests.
-
----
-
-### 6. Position Sizing Is Arbitrary
-
-**Problem**: The default position size of 0.001 BTC is not derived from any principle.
-
-**Questions**:
-- What's the Kelly-optimal position size?
-- How does position size relate to account equity?
-- What's the risk of ruin at current sizing?
-
-**Calculation**:
-```
-With 0.001 BTC at $90,000 = $90 per trade
-On $1000 account = 9% per trade
-Risk of ruin with 45% win rate and 9% risk:
-  P(ruin) ≈ ((1-p)/p)^(account/bet) = (0.55/0.45)^11 ≈ 8%
-```
-
-8% risk of ruin is unacceptably high.
-
-**Recommendation**: Implement proper Kelly sizing with fractional Kelly (0.25×) for safety.
+32 markdown files totaling ~3,000 lines. Many describe aspirations rather than
+reality. `ARCHITECTURE.md` describes the engine architecture that isn't used.
+`ROADMAP_BACKTEST.md` has 52 tickets; 24 are unimplemented.
 
 ---
 
-### 7. No Stress Testing
+## Summary: What Is Real vs What Is Wishful
 
-**Problem**: The system hasn't been tested against:
-- Flash crashes (March 2020 COVID, May 2021 BTC crash)
-- Exchange outages
-- API rate limits during high volatility
-- Liquidation cascades
+| Real | Wishful |
+|------|---------|
+| CSV ingestion + backtest loop | Engine/reducer architecture |
+| 12-strategy parameter sweep | Composable strategies (strategies.rs) |
+| Friction accounting | Signal library (signals.rs) |
+| Risk guards | Indicator library (indicators.rs) |
+| Deterministic replay | Epistemic server data |
+| 4 real-data regime backtests | Live trading |
+| Hypothesis ledger (manual) | Automated hypothesis updates |
+| | Config reproducibility |
 
-**Question**: What happens when the exchange websocket disconnects during a position?
-
-**Recommendation**: Simulate failure modes, add chaos testing.
-
----
-
-### 8. Metrics May Be Misleading
-
-**Problem**: Win rate alone doesn't indicate profitability.
-
-**Example**:
-```
-Strategy A: 90% win rate, average win $1, average loss $20
-  Expected PnL = 0.9 × $1 - 0.1 × $20 = -$1.10 per trade
-
-Strategy B: 40% win rate, average win $5, average loss $2
-  Expected PnL = 0.4 × $5 - 0.6 × $2 = $0.80 per trade
-```
-
-Strategy B is better despite lower win rate.
-
-**Evidence**: The system reports win rates but not win/loss magnitude ratios.
-
-**Recommendation**: Track expectancy = (win% × avg_win) - (loss% × avg_loss).
-
----
-
-## Moderate Concerns
-
-### 9. Code Quality Issues
-
-- 17 compiler warnings (dead code)
-- No property-based tests
-- Risk engine has no unit tests
-- Magic numbers throughout (`0.001`, `1000.0`, etc.)
-
-### 10. Documentation Gaps
-
-- No API documentation
-- No operational runbook
-- No incident response playbook
-
-### 11. Observability Deficits
-
-- No real-time dashboarding
-- No alerting on anomalies
-- Logging is incomplete
-
----
-
-## What Would Make This Production-Ready
-
-### Minimum Requirements
-
-1. **6+ months backtesting** across bull/bear/sideways
-2. **Walk-forward validation** with proper train/test split
-3. **Fill probability modeling** for limit orders
-4. **Risk of ruin calculation** with proper position sizing
-5. **Paper trading period** of 2+ weeks before real capital
-
-### Nice to Have
-
-1. Monte Carlo simulation for confidence intervals
-2. Stress testing against historical crash data
-3. Real-time monitoring with circuit breaker integration
-4. Multi-exchange failover
-
----
-
-## Summary Verdict
-
-**Rating**: ~~Not Ready for Production~~ **Research Validated, Honest Results**
-
-**Reasoning**: ~~The system optimizes for backtest metrics that don't translate to live performance. The fundamental execution model (assuming zero-cost instant fills) invalidates most of the favorable results.~~ **Update 2026-02-02**: The system now produces honest results showing no profitable edge under realistic conditions. This is the correct behavior for a research tool.
-
-**Key Results (180-day 1h BTCUSDT, 5000 bars)**:
-- 0/33 hypotheses profitable with realistic execution
-- Friction accounts for 961% of losses
-- Fill probability model working correctly
-- System stress-tested at 1.25M bars/sec without OOM
-
-**Path Forward**:
-1. ~~Acknowledge backtest limitations explicitly~~ ✓ Done
-2. ~~Implement realistic execution simulation~~ ✓ Done
-3. ~~Test on 10× more data~~ ✓ 5000 bars vs 1000
-4. Paper trade before any real capital (required)
-5. Explore alternative alpha sources (funding arbitrage, cross-exchange)
-
-**Bottom Line**: This is ~~a good research prototype~~ **a validated research tool that correctly shows no edge exists with the current strategy set**. The absence of profitable results is the correct outcome - the system isn't fooling itself.
+The honest core is ~3,000 lines. The rest is scaffolding for futures that
+haven't arrived.

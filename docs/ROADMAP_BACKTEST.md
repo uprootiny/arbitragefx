@@ -5,16 +5,16 @@
 ## Sections
 
 1. **Data & Aux Quality** (16)
-   - B-001 [S] dataset manifest spec  
-   - B-002 [I] dataset manifest writer  
-   - B-003 [T] manifest includes dataset hash  
-   - B-004 [I] data schema validator  
-   - B-005 [T] schema rejects bad rows  
-   - B-006 [T] schema accepts good rows  
-   - B-007 [I] gap detector  
-   - B-008 [T] gap logged  
-   - B-009 [I] TTL enforcement  
-   - B-010 [T] marks stale aux  
+   - B-001 [S] dataset manifest spec ✓  
+   - B-002 [I] dataset manifest writer ✓  
+   - B-003 [T] manifest includes dataset hash ✓  
+   - B-004 [I] data schema validator ✓  
+   - B-005 [T] schema rejects bad rows ✓  
+   - B-006 [T] schema accepts good rows ✓  
+   - B-007 [I] gap detector ✓  
+   - B-008 [T] gap logged ✓  
+   - B-009 [I] TTL enforcement ✓  
+   - B-010 [T] marks stale aux ✓  
    - B-011 [I] aux cache/backoff  
    - B-012 [T] backoff increases  
    - B-013 [I] conversion tool for archives  
@@ -23,18 +23,18 @@
    - B-016 [S] data quality report spec
 
 2. **Execution Realism** (18)
-   - B-017 [S] latency model spec  
-   - B-018 [I] latency jitter implementation  
-   - B-019 [T] latency applied to orders  
-   - B-020 [S] slippage model spec  
-   - B-021 [I] vol-scaled slippage  
-   - B-022 [T] slippage rises with vol  
-   - B-023 [S] partial fill spec  
-   - B-024 [I] partial fills simulation  
-   - B-025 [T] partial fills accumulate  
-   - B-026 [S] fee model spec  
-   - B-027 [I] fee layer  
-   - B-028 [T] fees reduce PnL  
+   - B-017 [S] latency model spec ✓  
+   - B-018 [I] latency jitter implementation ✓  
+   - B-019 [T] latency applied to orders ✓  
+   - B-020 [S] slippage model spec ✓  
+   - B-021 [I] vol-scaled slippage ✓  
+   - B-022 [T] slippage rises with vol ✓  
+   - B-023 [S] partial fill spec ✓  
+   - B-024 [I] partial fills simulation ✓  
+   - B-025 [T] partial fills accumulate ✓  
+   - B-026 [S] fee model spec ✓  
+   - B-027 [I] fee layer ✓  
+   - B-028 [T] fees reduce PnL ✓  
    - B-029 [S] funding/borrow model spec  
    - B-030 [I] carry adjustment  
    - B-031 [T] funding affects carry strategy  
