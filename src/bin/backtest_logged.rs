@@ -84,7 +84,7 @@ fn main() {
     let mut metrics = MetricsEngine::new();
 
     let start = Instant::now();
-    let initial_cash = 1000.0;
+    let _initial_cash = 1000.0;
     let checkpoint_interval = n_bars / 10; // 10 checkpoints across the run
     let summary_interval = n_bars / 20; // 20 periodic summaries
 

@@ -17,7 +17,7 @@ fn generate_data(n_bars: usize, seed: u64) -> Vec<CsvRow> {
     let mut ts = 1700000000u64 + seed * 1000;
 
     for i in 0..n_bars {
-        let noise = ((i as f64 * 0.1 + seed as f64).sin() * 100.0);
+        let noise = (i as f64 * 0.1 + seed as f64).sin() * 100.0;
         price = (price + noise).max(1.0);
 
         rows.push(CsvRow {

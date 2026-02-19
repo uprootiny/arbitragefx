@@ -7,9 +7,8 @@
 //!   suggest      - Suggest next experiments
 //!   report       - Generate full research report
 
-use std::collections::HashMap;
 use std::fs::File;
-use std::io::{BufRead, BufReader, Write};
+use std::io::{BufRead, BufReader};
 use std::time::Instant;
 
 use arbitragefx::backtest::{parse_csv_line, CsvRow};
@@ -18,7 +17,7 @@ use arbitragefx::hypothesis::{
     standard_hypotheses,
 };
 use arbitragefx::indicators::{Atr, BollingerBands, Ema, Macd, Rsi, Sma};
-use arbitragefx::signals::{momentum_signal, mean_reversion_signal, trend_signal, Signal};
+use arbitragefx::signals::{momentum_signal, mean_reversion_signal, trend_signal};
 use arbitragefx::strategy::IndicatorSnapshot;
 
 const LEDGER_PATH: &str = "data/hypothesis_ledger.json";

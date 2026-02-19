@@ -87,7 +87,7 @@ fn verify_micro(events: &[LogEntry], trace: &[LogEntry]) -> MicroStats {
         .collect();
 
     // Check for decisions without corresponding fills
-    for ((ts, sid), _) in &decisions {
+    for ((_ts, _sid), _) in &decisions {
         // A decision may or may not result in a fill (hold decisions don't)
         // We only count non-hold decisions
     }

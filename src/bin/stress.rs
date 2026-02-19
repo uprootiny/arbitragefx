@@ -9,7 +9,7 @@
 
 use std::time::Instant;
 
-use arbitragefx::backtest::{parse_csv_line, CsvRow};
+use arbitragefx::backtest::CsvRow;
 use arbitragefx::metrics::MetricsEngine;
 use arbitragefx::risk::RiskEngine;
 use arbitragefx::state::{Config, Fill, MarketState, StrategyInstance};

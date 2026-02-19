@@ -16,7 +16,6 @@ mod live_ops;
 use anyhow::Result;
 use chrono::Utc;
 use logging::{json_log, obj, params_hash, v_num, v_str, ProfileScope};
-use serde_json::json;
 use reliability::{circuit::CircuitBreaker, state::OrderBook, wal::Wal};
 use adapter::unified::UnifiedAdapter;
 use adapter::binance::BinanceAdapter;

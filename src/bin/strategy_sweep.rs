@@ -83,7 +83,7 @@ impl RunningStats {
 
         // Momentum
         let momentum = row.c - self.ema_fast;
-        let mom_change = momentum - self.momentum_prev;
+        let _mom_change = momentum - self.momentum_prev;
         self.momentum_prev = momentum;
 
         // Volume spike

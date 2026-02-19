@@ -546,7 +546,7 @@ impl HypothesisLedger {
     pub fn derive_actions(&self) -> Vec<DevelopmentAction> {
         let mut actions = Vec::new();
 
-        for (id, h) in &self.hypotheses {
+        for (id, _h) in &self.hypotheses {
             let evidence: Vec<_> = self.evidence.iter()
                 .filter(|e| e.hypothesis_id == *id)
                 .collect();

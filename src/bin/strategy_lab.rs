@@ -7,24 +7,18 @@ use std::io::{BufRead, BufReader};
 use std::time::Instant;
 
 use arbitragefx::backtest::{parse_csv_line, CsvRow};
-use arbitragefx::filters::{
-    all_filters, drawdown_filter, momentum_filter, position_limit_filter,
-    trend_alignment_filter, volatility_filter, FilterResult,
-};
 use arbitragefx::indicators::{
     Atr, BollingerBands, Ema, Macd, PatternDetector, Rsi, Sma, Stochastic,
     Candle as IndCandle,
 };
 use arbitragefx::signals::{
-    momentum_signal, mean_reversion_signal, trend_signal, trend_aligned_momentum,
-    funding_carry_signal, volatility_breakout, climax_signal, Signal,
+    momentum_signal, trend_signal,
 };
 use arbitragefx::sizing::{
-    fixed_size, risk_based_size, volatility_adjusted_size, kelly_size,
-    signal_scaled_size, apply_max_position, round_to_lot, PositionSizer,
+    volatility_adjusted_size, apply_max_position, round_to_lot,
 };
 use arbitragefx::strategy::{
-    Action, Candle, IndicatorSnapshot, MarketAux, MarketView, MetricsState,
+    IndicatorSnapshot, MetricsState,
     PortfolioState, StrategyState,
 };
 
@@ -75,7 +69,7 @@ impl IndicatorState {
         self.rsi.update(row.c);
         self.macd.update(row.c);
         self.bb.update(row.c);
-        let atr = self.atr.update(row.h, row.l, row.c);
+        let _atr = self.atr.update(row.h, row.l, row.c);
         self.stoch.update(row.h, row.l, row.c);
         let price_mean = self.price_sma.update(row.c);
         let vol_mean = self.vol_sma.update((row.h - row.l) / row.c);
@@ -625,7 +619,7 @@ fn main() {
     for strat in &strategies {
         let start = Instant::now();
         let result = run_strategy(strat, &rows);
-        let elapsed = start.elapsed();
+        let _elapsed = start.elapsed();
 
         let win_pct = if result.trades > 0 {
             result.wins as f64 / result.trades as f64 * 100.0

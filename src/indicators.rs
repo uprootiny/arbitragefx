@@ -343,7 +343,7 @@ pub struct Stochastic {
 }
 
 impl Stochastic {
-    pub fn new(period: usize, k_smooth: usize, d_smooth: usize) -> Self {
+    pub fn new(period: usize, _k_smooth: usize, d_smooth: usize) -> Self {
         Self {
             period,
             highs: VecDeque::with_capacity(period),

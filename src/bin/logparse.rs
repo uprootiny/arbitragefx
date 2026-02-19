@@ -15,7 +15,7 @@
 //!   --level=<level>      Minimum level (trace,debug,info,warn,error,fatal)
 //!   --json               Output as JSON (default: human-readable)
 
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 use serde_json::Value;
 use std::collections::HashMap;
 use std::fs::File;

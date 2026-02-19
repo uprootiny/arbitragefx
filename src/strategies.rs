@@ -304,7 +304,7 @@ impl Strategy for FundingCarryStrategy {
     }
 
     fn update(&mut self, market: MarketView, state: &mut StrategyState) -> Action {
-        let now = market.last.ts;
+        let _now = market.last.ts;
         let price = market.last.c;
 
         // Exit checks

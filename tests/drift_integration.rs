@@ -38,7 +38,7 @@ fn test_drift_triggers_conservative_response() {
     for i in 0..100 {
         let ts = i * 300_000;  // 5-minute bars
         let base_price = 50000.0;
-        let noise = ((i as f64 * 0.1).sin() * 200.0);  // ±200 oscillation
+        let noise = (i as f64 * 0.1).sin() * 200.0;  // ±200 oscillation
         let price = base_price + noise;
 
         // Push candle event
@@ -94,7 +94,7 @@ fn test_drift_triggers_conservative_response() {
     for i in 100..150 {
         let ts = i * 300_000;
         let base_price = 45000.0;  // -10% crash
-        let noise = ((i as f64 * 0.3).sin() * 1000.0);  // ±1000 (high vol)
+        let noise = (i as f64 * 0.3).sin() * 1000.0;  // ±1000 (high vol)
         let price = base_price + noise;
 
         // Push candle event
@@ -221,7 +221,7 @@ fn test_regime_and_drift_combined() {
     use arbitragefx::engine::narrative_detector::NarrativeRegime;
 
     let mut state = EngineState::new();
-    let cfg = ReducerConfig::default();
+    let _cfg = ReducerConfig::default();
 
     // Set up both regime and drift in warning states
     state.regime.current = NarrativeRegime::NarrativeDriven;

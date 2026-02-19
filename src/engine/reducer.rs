@@ -802,7 +802,7 @@ mod tests {
     #[test]
     fn test_regime_reduces_position_size() {
         let mut state = EngineState::new();
-        let cfg = ReducerConfig {
+        let _cfg = ReducerConfig {
             position_size: 0.01,
             entry_threshold: 0.01,  // Low threshold
             ..Default::default()
