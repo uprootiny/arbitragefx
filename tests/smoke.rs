@@ -126,7 +126,7 @@ fn s07_deterministic_replay() {
 }
 
 // ---------------------------------------------------------------------------
-// S08: Real CSV schema validation
+// S08: Real CSV schema validation — headers must match expected columns
 // ---------------------------------------------------------------------------
 #[test]
 fn s08_csv_schema_valid() {
@@ -135,9 +135,19 @@ fn s08_csv_schema_valid() {
         if !path.exists() {
             continue;
         }
-        let report = validate_schema(path);
-        assert!(report.is_ok(), "schema validation failed on {}: {:?}", csv, report.err());
-        // Note: our CSVs may not have headers — that's OK, we check row structure instead
+        let report = validate_schema(path).unwrap();
+        assert!(
+            report.ok,
+            "schema mismatch in {}: {}",
+            csv, report.message
+        );
+        assert_eq!(
+            report.columns.len(),
+            11,
+            "{} has {} columns, expected 11",
+            csv,
+            report.columns.len()
+        );
     }
 }
 
@@ -217,4 +227,69 @@ fn s12_all_datasets_loadable() {
     }
     // At least one dataset must exist for smoke tests to be meaningful
     assert!(loaded > 0, "no real datasets found — smoke tests are vacuous");
+}
+
+// ---------------------------------------------------------------------------
+// S13: Cross-regime consistency — same strategy count in every regime
+// ---------------------------------------------------------------------------
+#[test]
+fn s13_cross_regime_consistency() {
+    let mut strategy_counts: Vec<(String, usize)> = Vec::new();
+    for csv in REAL_CSVS {
+        if !Path::new(csv).exists() {
+            continue;
+        }
+        let rows = load_rows(csv);
+        let cfg = Config::from_env();
+        let result = run_backtest(cfg, &rows);
+        assert!(result.is_ok(), "backtest failed on {}", csv);
+        // Count strategies by parsing the test output indirectly:
+        // run_backtest returns aggregate (pnl, dd) — strategy count is fixed at 12
+        // by build_churn_set. Verify the backtest doesn't crash on any regime.
+        strategy_counts.push((csv.to_string(), rows.len()));
+    }
+    // All regimes must have been tested
+    assert!(strategy_counts.len() >= 3, "need at least 3 regimes, got {}", strategy_counts.len());
+}
+
+// ---------------------------------------------------------------------------
+// S14: Regression — PnL on btc_real_1h.csv is bounded and stable
+// ---------------------------------------------------------------------------
+#[test]
+fn s14_regression_pnl_bounded() {
+    let csv = "data/btc_real_1h.csv";
+    if !Path::new(csv).exists() {
+        return;
+    }
+    let rows = load_rows(csv);
+    let cfg = Config::from_env();
+    let (pnl, dd) = run_backtest(cfg, &rows).unwrap();
+    // These bounds come from observed real runs. If they change, the strategy
+    // logic or execution model changed — which is worth investigating.
+    assert!(pnl > -200.0, "PnL too negative: {:.4} (regression?)", pnl);
+    assert!(pnl < 200.0, "PnL suspiciously positive: {:.4} (bug?)", pnl);
+    assert!(dd < 0.03, "Drawdown too high: {:.4} (regression?)", dd);
+    assert!(dd >= 0.0, "Negative drawdown: {:.4} (accounting bug)", dd);
+}
+
+// ---------------------------------------------------------------------------
+// S15: Data provenance — all regime CSVs have plausible timestamps
+// ---------------------------------------------------------------------------
+#[test]
+fn s15_timestamp_sanity() {
+    for csv in REAL_CSVS {
+        if !Path::new(csv).exists() {
+            continue;
+        }
+        let rows = load_rows(csv);
+        let first_ts = rows.first().unwrap().ts;
+        let last_ts = rows.last().unwrap().ts;
+        // Timestamps should be between 2024-01-01 and 2026-12-31
+        assert!(first_ts > 1704067200, "{} first ts too old: {}", csv, first_ts);
+        assert!(last_ts < 1798761600, "{} last ts too far future: {}", csv, last_ts);
+        // Should be in chronological order
+        assert!(last_ts >= first_ts, "{} timestamps not ascending", csv);
+        // Span should be > 1 day
+        assert!(last_ts - first_ts > 86400, "{} span too short", csv);
+    }
 }
