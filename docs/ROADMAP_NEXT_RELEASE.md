@@ -1,132 +1,151 @@
-# Roadmap: v0.2.0 — Smoke Tests & Reality Grounding
+# Roadmap: v0.3.0 — Viable Backtesting & Hypothesis Reconciliation System
 
-**Goal:** Every claim the system makes is backed by a passing smoke test.
-No new features until the existing core is ground-truthed.
+**Goal:** ArbitrageFX becomes a usable system for backtesting strategies on real data,
+evaluating hypotheses with Bayesian truth values, and producing honest assessments
+of trading viability across market regimes.
 
----
-
-## Phase 0: Smoke Test Harness (this commit)
-
-- [x] `tests/smoke.rs` — end-to-end smoke tests that run in `cargo test`
-- [x] `scripts/smoke.sh` — shell-level smoke tests for binaries and data
-- [x] CI gate: nothing merges without `cargo test` + `scripts/smoke.sh` green
-
-### Smoke Test Categories
-
-| # | Test | What It Proves |
-|---|------|---------------|
-| S01 | `cargo build --release` succeeds | Code compiles |
-| S02 | `cargo test` all pass | Unit/integration tests hold |
-| S03 | Backtest on btc_real_1h.csv produces output | Core pipeline works |
-| S04 | Backtest output has all 12 strategies | Strategy factory works |
-| S05 | All equity values > 0 | Invariant I001 holds |
-| S06 | All max_drawdown <= 5% | Invariant I002 holds |
-| S07 | Deterministic: two runs produce identical output | Replay property |
-| S08 | Each real CSV has valid schema (11 columns) | Data integrity |
-| S09 | Each real CSV has SHA256 matching manifest | Data provenance |
-| S10 | No strategy beats buy-hold in bull market | Sanity check (H007) |
-| S11 | Friction > 0 for all strategies with trades > 0 | Fee accounting |
-| S12 | Trade count correlates with friction | H008 regression |
+**Updated:** 2026-02-19
+**Previous:** v0.2.0 focused on smoke tests & reality grounding (largely complete)
 
 ---
 
-## Phase 1: Kill the Lies (3-5 commits)
+## v0.2.0 Status: What's Done
 
-### 1a. Epistemic server serves real data
-- `EpistemicState::from_system()` actually scans source files
-- Smoke test: response contains real file paths and line counts
-- Smoke test: stratum counts change when code changes
+| Phase | Status | Evidence |
+|-------|--------|----------|
+| Phase 0: Smoke test harness | DONE | 13 Rust smoke tests + 8 shell smoke tests, all green |
+| Phase 1a: Epistemic server real data | DONE | Reads hypothesis_ledger.edn, scans data/, reports real pipeline |
+| Phase 1b: Config snapshotting | NOT DONE | Still 54 env vars with no snapshot |
+| Phase 1c: Data manifest enforcement | PARTIAL | SHA256 hashing works, no enforcement gate |
+| Phase 2a: Strategy unit tests | DONE | 15 SimpleMomentum tests covering all decision branches |
+| Phase 2b: Regression snapshots | NOT DONE | |
+| Phase 2c: Composable strategies resolved | NOT DONE | 808 lines still dead |
+| Phase 3a: min_hold_candles | DONE | Wired into SimpleMomentum + CarryOpportunistic |
+| Phase 3b: Signal smoothing | NOT DONE | |
+| Phase 3c: Re-run hypothesis ledger | DONE | v1.1.0 with 9 hypotheses, 5 datasets |
+| Phase 4a: Data fetch script | DONE | scripts/fetch_data.sh |
+| Phase 4b: Pipeline script | DONE | scripts/pipeline.sh → dated reports |
+| Phase 4c: Cron-ready | PARTIAL | Idempotent but no cron setup |
 
-### 1b. Config snapshotting
-- `run_backtest()` returns a `RunResult` struct including config hash
-- Config serialized to JSON alongside output
+**Test count:** 353 (up from 258 at v0.1.0)
+**Datasets:** 5 real BTC/USDT regime files from Binance public API
+**Hypotheses:** 9, with Bayesian truth values updated from 5-regime evidence
+
+---
+
+## v0.3.0: The System Vision
+
+ArbitrageFX should be a **viable backtesting / trading reconnaissance / strategy
+evaluation / hypothesis tracking and reconciliation system**. This means:
+
+1. **Backtesting**: Run any strategy on any dataset, get structured results
+2. **Reconnaissance**: Fetch new data, detect regime, position in known parameter space
+3. **Strategy evaluation**: Compare strategies across regimes with honest friction
+4. **Hypothesis tracking**: Bayesian truth values updated from evidence, not narrative
+5. **Reconciliation**: When new data arrives, update beliefs and report what changed
+
+---
+
+## Phase 5: Config Reproducibility (2 commits)
+
+### 5a. Config snapshot on every run
+- `BacktestResult` includes serialized config JSON
+- Each run writes `out/configs/{timestamp}.json`
 - Smoke test: two runs with different ENV produce different config hashes
 
-### 1c. Data manifest enforcement
-- `data/manifest.json` with SHA256 for each CSV
-- Backtest refuses to run on unmanifested data
-- Smoke test: backtest on tampered CSV fails with clear error
+### 5b. Config diff tool
+- `cargo run --bin config_diff -- out/configs/a.json out/configs/b.json`
+- Shows which parameters changed and in what direction
 
 ---
 
-## Phase 2: Strategy Ground Truth (3-5 commits)
+## Phase 6: Dead Code Resolution (2-3 commits)
 
-### 2a. Strategy unit tests on known data
-- Hand-crafted 10-candle sequences with known correct actions
-- Test: SimpleMomentum buys on up-trend, sells on down-trend
-- Test: SimpleMomentum holds during vol pause
-- Test: CarryOpportunistic enters on funding imbalance
-
-### 2b. Regression snapshots
-- Golden output files for each regime backtest
-- Smoke test: output matches golden file (or diff is explained)
-
-### 2c. Composable strategies: use them or delete them
+### 6a. Composable strategies: benchmark or delete
 - Wire `strategies.rs` into a backtest binary
-- Run on all 4 regimes
-- Compare to SimpleMomentum baseline
-- Decision: keep (if any beat baseline) or delete (if none do)
+- Run on all 5 regimes, compare to SimpleMomentum baseline
+- Decision gate: keep if any beat baseline in any regime; delete otherwise
+
+### 6b. Engine/reducer: scope or archive
+- Either wire engine_backtest to run on real CSV data
+- Or move engine/ to an `archive/` directory with a README explaining why
+- No more pretending both architectures are production
+
+### 6c. indicators.rs + signals.rs resolution
+- Either wire into the SimpleMomentum path (replacing inline z-score computation)
+- Or document them as reference implementations and mark aspirational
 
 ---
 
-## Phase 3: Frequency Loosening (2-3 commits)
+## Phase 7: Walk-Forward Validation (3 commits)
 
-### 3a. Minimum hold period parameter
-- Add `min_hold_candles` to Config
-- Strategy cannot exit before N candles after entry
-- Smoke test: with min_hold=6, no trade lasts fewer than 6 candles
+### 7a. Train/test split framework
+- Split each regime dataset 70/30
+- Backtest on train, validate on test
+- Report overfit ratio: train_pnl / test_pnl
 
-### 3b. Signal smoothing / confirmation
-- Require N consecutive bars of signal before entry
-- Smoke test: trade count drops by >50% vs baseline
+### 7b. Walk-forward harness
+- Rolling window: train on N candles, test on next M
+- Repeat across full dataset
+- Aggregate: mean return, variance, worst window
 
-### 3c. Re-run hypothesis ledger
-- Automated: backtest all 4 regimes -> parse output -> update ledger
-- Smoke test: H008 friction/frequency correlation still holds
-- Smoke test: net PnL improves with reduced frequency (or we learn why not)
-
----
-
-## Phase 4: Ingestion Pipeline (2-3 commits)
-
-### 4a. Data fetch script
-- `scripts/fetch_data.sh` — pulls latest candles from Binance
-- Appends to existing CSVs or creates new regime files
-- Updates manifest.json with new hashes
-- Smoke test: fetched data passes schema validation
-
-### 4b. Pipeline script
-- `scripts/pipeline.sh` — fetch -> validate -> backtest -> report
-- Single command to update the whole system
-- Smoke test: pipeline produces a dated report file
-
-### 4c. Cron-ready
-- Pipeline script is idempotent
-- Writes to `out/reports/YYYY-MM-DD.json`
-- Smoke test: running twice produces identical output
+### 7c. Multiple testing correction
+- 12 strategies x 5 regimes = 60 comparisons
+- Apply Bonferroni or Holm-Bonferroni correction
+- Flag any "significant" result that doesn't survive correction
 
 ---
 
-## Release Criteria for v0.2.0
+## Phase 8: Automated Hypothesis Loop (2-3 commits)
 
-All of these must pass:
-1. `cargo test` — 0 failures
-2. `scripts/smoke.sh` — all 12 smoke tests green
-3. No dead code in the hot path (strategies.rs resolved one way or the other)
-4. Epistemic server serves computed data
-5. At least one strategy with positive net PnL in at least one regime
-   after frequency loosening, OR honest documentation of why not
-6. Pipeline script runs end-to-end without manual intervention
+### 8a. Backtest → ledger updater
+- `cargo run --bin update_ledger -- out/reports/latest.json`
+- Parses structured BacktestResult, computes Bayesian updates
+- Writes updated hypothesis_ledger.edn
+
+### 8b. Regime detection
+- Classify new data into known regime categories
+- Auto-select comparison baseline from historical results
+- Report: "This looks like Regime X; in that regime, we expect Y"
+
+### 8c. Change detection report
+- Diff current ledger against previous version
+- Report: which hypotheses strengthened, weakened, or flipped
+- Highlight: any invariant that broke
 
 ---
 
-## Non-Goals for v0.2.0
+## Phase 9: Publication Quality (2 commits)
 
-- Live trading (Phase 5+)
-- Engine/reducer convergence (Phase 6+)
-- Multi-asset (Phase 7+)
-- Blockchain integration (Phase 8+)
-- Forecast engineering integration (Phase 9+)
+### 9a. GitHub Pages with live data
+- Pages workflow reads hypothesis_ledger.edn at build time
+- Renders current truth values, evidence summary, regime comparison
+- No hardcoded HTML — generated from data
 
-First we prove we can run honest backtests on real data with automated
-validation. Everything else is premature.
+### 9b. Report format standardization
+- Pipeline produces JSON + Markdown report
+- JSON for programmatic consumption
+- Markdown for human reading / GitHub rendering
+
+---
+
+## Release Criteria for v0.3.0
+
+1. `cargo test` — 0 failures, 350+ tests
+2. `scripts/smoke.sh` — all smoke tests green
+3. Dead code resolved one way or the other (strategies.rs, engine/)
+4. Walk-forward validation on at least one regime
+5. Multiple testing correction applied to all "significant" claims
+6. Pipeline: fetch → validate → backtest → update ledger → report
+7. Config snapshot on every run
+8. At least one strategy with positive net PnL surviving walk-forward,
+   OR honest documentation of why not (and what would need to change)
+
+---
+
+## Non-Goals for v0.3.0
+
+- Live trading (requires exchange integration testing)
+- Multi-asset (requires data infrastructure)
+- ML/optimization (requires walk-forward first to avoid overfitting)
+- Real-time dashboards (batch analysis is sufficient)

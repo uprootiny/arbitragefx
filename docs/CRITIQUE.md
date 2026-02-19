@@ -1,11 +1,19 @@
 # ArbitrageFX — Critique: Wishful Thinking Inventory
 
-**Date:** 2026-02-18
+**Date:** 2026-02-18, **Updated:** 2026-02-19
 **Purpose:** Honest assessment of where the codebase claims more than it delivers.
 
 ---
 
-## 1. Two Architectures, Zero Convergence
+## Status Key
+
+- **FIXED** — addressed with evidence
+- **PARTIAL** — progress made, gap remains
+- **OPEN** — not yet addressed
+
+---
+
+## 1. Two Architectures, Zero Convergence — OPEN
 
 The engine/ directory (3,964 lines) implements a beautiful event-sourced reducer
 architecture. The actual backtest runs through `state.rs` + `backtest.rs`, which
@@ -16,139 +24,127 @@ is a mutable-state imperative loop. These share no code paths.
 skeleton. The engine_backtest binary exists but is not used for any hypothesis
 testing, sweep, or validation run.
 
-**Cost:** Every improvement to the legacy loop (friction models, strategy variants)
-must eventually be reimplemented in the engine, or the engine must be abandoned.
-Neither has happened.
+**Cost:** Every improvement to the legacy loop must eventually be reimplemented
+in the engine, or the engine must be abandoned. Neither has happened.
 
-## 2. strategies.rs: 808 Lines of Dead Code
+**Plan:** v0.3.0 Phase 6b will scope or archive the engine.
 
-Seven composable strategy types (`MomentumStrategy`, `MeanReversionStrategy`,
-`FundingCarryStrategy`, `VolatilityBreakoutStrategy`, `EventDrivenStrategy`,
-`MultiFactorStrategy`, `AdaptiveStrategy`) implement the `Strategy` trait.
+## 2. strategies.rs: 808 Lines of Dead Code — OPEN
 
+Seven composable strategy types implement the `Strategy` trait.
 **None of them are instantiated by any binary.**
 
-The actual backtests use `SimpleMomentum` and `CarryOpportunistic` from `state.rs`.
-The composable strategies exist to prove the design is extensible. They prove
-nothing about alpha.
+**Plan:** v0.3.0 Phase 6a will benchmark against SimpleMomentum or delete.
 
-**Cost:** 808 lines that create the impression of strategic diversity while
-all real results come from one strategy with parameter sweeps.
+## 3. signals.rs: A Library Nobody Calls — OPEN
 
-## 3. signals.rs: A Library Nobody Calls
+16 signal functions consumed only by the dead `strategies.rs`.
+The live `SimpleMomentum` computes its own z-score blend inline.
 
-16 signal functions (momentum, mean_reversion, trend_strength, vwap_deviation,
-vol_breakout, climax_reversal, funding_carry, etc.)
+**Plan:** Resolved together with strategies.rs in Phase 6.
 
-These are consumed only by the dead `strategies.rs`. The live `SimpleMomentum`
-computes its own z-score blend inline.
+## 4. The Epistemic Server Lies — FIXED
 
-## 4. The Epistemic Server Lies
+`EpistemicState::from_system()` previously returned **hardcoded literals**.
 
-`src/epistemic.rs` -> `EpistemicState::from_system()` returns **hardcoded literals**.
-It claims to scan the codebase and report verification strata. It does not.
-The numbers it serves are fiction presented as introspection.
+**Fix (commit 90903ea):** Now parses `hypothesis_ledger.edn` for real hypothesis
+IDs, names, and Bayesian truth values. Scans `data/` for CSV count. Reports
+actual signals, filters, and pipeline dataflows from the production code path.
+Honestly declares uncalibrated slippage and absent live validation as assumptions.
 
-The dashboard at port 42280 displays these lies as if they were computed.
+## 5. 23 Binaries, 1 Workflow — PARTIAL
 
-## 5. 23 Binaries, 1 Workflow
+Added useful binaries: `coherence_check`, `dataset_manifest`.
+Added pipeline script that orchestrates: fetch → validate → backtest → report.
+Still have ~18 binaries of questionable utility.
 
-The codebase has 23 binaries. The actual workflow is:
-```
-cargo run --bin backtest -- data/btc_real_1h.csv
-```
-That's it. The other 22 binaries are:
-- 5 that don't compile without specific data/config
-- 8 that duplicate functionality of others
-- 4 stress/fuzz tools that have never caught a bug
-- 3 that analyze logs that are never generated in normal operation
-- 2 skeleton demos
+**Plan:** Phase 6 will audit and prune.
 
-**Cost:** Compilation time. Every `cargo test` builds all 23 binaries.
+## 6. "Hypothesis-Driven Research" Without the Loop — PARTIAL
 
-## 6. "Hypothesis-Driven Research" Without the Loop
+The hypothesis_ledger.edn is now at v1.1.0 with 9 hypotheses, 5 datasets,
+and Bayesian truth values updated from real backtest evidence.
+But the update process is still manual.
 
-`hypothesis.rs` (828 lines) and `src/bin/research_lab.rs` (679 lines) implement
-a structured hypothesis tracking system. The hypothesis_ledger.edn was built
-**manually** by running backtests and interpreting output.
+**Plan:** v0.3.0 Phase 8a will automate: backtest → parse → Bayesian update → write.
 
-There is no automated path from "run backtest" -> "update hypothesis truth values."
+## 7. Config: 54 Environment Variables, Zero Snapshots — OPEN
 
-## 7. Config: 54 Environment Variables, Zero Snapshots
+No config snapshotting. No way to reproduce a specific run.
 
-Every run's configuration is determined by environment variables. There is no
-mechanism to:
-- Record which config produced which results
-- Diff configs between runs
-- Restore a previous config
-- Validate that a config is internally consistent
+**Plan:** v0.3.0 Phase 5.
 
-## 8. The "Realistic" Execution Mode Isn't
+## 8. The "Realistic" Execution Mode Isn't — OPEN
 
-`ExecConfig::realistic()` uses:
-- `slippage_k: 0.0005` — plausible but not calibrated to any real orderbook
-- `adverse_selection: 0.3` — pulled from thin air
-- `vol_slip_mult: 1.5` — same
+`ExecConfig::realistic()` parameters are plausible but uncalibrated.
+Now honestly declared as an assumption in the epistemic server.
 
-None of these parameters are derived from observed fill data.
+**Plan:** Requires real fill data to calibrate. Blocked until live/paper trading.
 
-## 9. Data Provenance Is Partial
+## 9. Data Provenance Is Partial — PARTIAL
 
-The four regime datasets have SHA256 hashes. Good. But:
-- The older datasets (btc_5m_30d.csv, btc_1h_180d.csv) have unknown provenance
-- No dataset records its fetch timestamp or API parameters
-- The train/test splits were created by an unknown process
-- `btc_sim.csv` is synthetic but not labeled as such
+Five regime datasets with SHA256 hashes and known provenance (Binance public API,
+fetch timestamps recorded in hypothesis_ledger.edn). Headers standardized.
+Older datasets (btc_5m_30d.csv, btc_1h_180d.csv) still have unknown provenance.
 
-## 10. "Live Trading" Is Theoretical
+## 10. "Live Trading" Is Theoretical — OPEN
 
-The codebase has exchange traits, WebSocket feeds, WAL, reconciliation, kill switch,
-circuit breaker. But:
-- No evidence of a single live trade ever executed
-- No paper trading results
-- No deployment configuration, monitoring, or alerting
+No evidence of a single live trade ever executed.
+Honestly declared as an assumption (confidence: 0.0) in the epistemic server.
 
-## 11. The Narrative Detector Has No Evidence
+## 11. The Narrative Detector Has No Evidence — OPEN
 
-`NarrativeRegime` classifies markets as Grounded/Uncertain/NarrativeDriven/Reflexive
-and multiplies position sizes by 1.0/0.7/0.3/0.0. The thresholds were chosen
-by intuition. There is no backtest showing this improves returns.
+`NarrativeRegime` thresholds were chosen by intuition. No backtest evidence.
 
-## 12. Test Coverage Is Shallow Where It Matters
+## 12. Test Coverage Is Shallow Where It Matters — FIXED
 
-258 tests sounds substantial. But:
-- `SimpleMomentum.update()` (the actual trading decision) has **zero direct tests**
-- No test verifies that a strategy produces expected trades on known data
-- The backtest_validation tests verify execution mechanics, not strategy correctness
-- `state.rs` tests are mostly for RingBuffer and Config parsing
+**Fix (commits cef7b81, 5b959e8, 9d4799f):**
+- 15 direct tests for SimpleMomentum.update() covering all decision branches:
+  start delay, vol pause, funding carry, liquidation cascade, take profit,
+  stop loss, time stop, score-based entry (buy/sell), edge hurdle, low-vol
+  momentum follow, high-vol mean reversion, strong trend override,
+  min_hold_candles (blocks TP, allows stop loss)
+- 13 Rust smoke tests on real data (schema, regression, determinism, cross-regime)
+- 353 total tests passing
 
-## 13. indicators.rs: Comprehensive but Disconnected
+## 13. indicators.rs: Comprehensive but Disconnected — OPEN
 
 718 lines implementing EMA, SMA, RSI, MACD, Bollinger Bands, ATR, etc.
-Used by: `filters.rs` (which is used by nobody in the backtest path).
-The actual backtest uses `IndicatorState` from `state.rs`, which computes its
-own indicators inline.
+Used by `filters.rs` (which is used by nobody in the backtest path).
+The actual backtest uses `IndicatorState` from `state.rs`.
 
-## 14. Documentation Debt
+**Plan:** Resolved with strategies.rs in Phase 6.
 
-32 markdown files totaling ~3,000 lines. Many describe aspirations rather than
-reality. `ARCHITECTURE.md` describes the engine architecture that isn't used.
-`ROADMAP_BACKTEST.md` has 52 tickets; 24 are unimplemented.
+## 14. Documentation Debt — PARTIAL
+
+**Fixed:**
+- ARCHITECTURE.md rewritten with actual system diagram and module map
+- README.md created with honest quick start and findings
+- DESIGN.md updated to distinguish legacy vs engine architecture
+- ROADMAP_NEXT_RELEASE.md updated with v0.2.0 completion status and v0.3.0 plan
+- ROADMAP_BACKTEST.md updated with 30/52 ticket completion
+
+**Remaining:** Some older docs still describe aspirations as reality.
 
 ---
 
-## Summary: What Is Real vs What Is Wishful
+## Summary: What Is Real vs What Is Wishful (updated)
 
-| Real | Wishful |
-|------|---------|
-| CSV ingestion + backtest loop | Engine/reducer architecture |
-| 12-strategy parameter sweep | Composable strategies (strategies.rs) |
-| Friction accounting | Signal library (signals.rs) |
-| Risk guards | Indicator library (indicators.rs) |
-| Deterministic replay | Epistemic server data |
-| 4 real-data regime backtests | Live trading |
-| Hypothesis ledger (manual) | Automated hypothesis updates |
-| | Config reproducibility |
+| Real | Wishful | Status |
+|------|---------|--------|
+| CSV ingestion + backtest loop | Engine/reducer architecture | OPEN |
+| 12-strategy parameter sweep | Composable strategies (strategies.rs) | OPEN |
+| Friction accounting | Signal library (signals.rs) | OPEN |
+| Risk guards | Indicator library (indicators.rs) | OPEN |
+| Deterministic replay | ~~Epistemic server data~~ | **FIXED** |
+| 5 real-data regime backtests | Live trading | OPEN |
+| Hypothesis ledger (v1.1.0, 9 hypotheses) | Automated hypothesis updates | PARTIAL |
+| 353 tests, 15 strategy decision tests | ~~Shallow test coverage~~ | **FIXED** |
+| Smoke tests + CI pipeline | Config reproducibility | OPEN |
+| Structured BacktestResult | Walk-forward validation | OPEN |
+| min_hold_candles | Multiple testing correction | OPEN |
 
-The honest core is ~3,000 lines. The rest is scaffolding for futures that
-haven't arrived.
+**Scorecard:** 3 fixed, 4 partial, 7 open. Net drift: toward structure.
+
+The honest core is ~3,500 lines (up from ~3,000). The delta is real:
+data validation, structured results, strategy tests, honest epistemic reporting.
