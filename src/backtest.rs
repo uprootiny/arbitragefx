@@ -244,6 +244,30 @@ fn latency_delay(submit_ts: u64, strategy_idx: usize, min: u64, max: u64) -> u64
     min + (x % span)
 }
 
+/// Per-strategy result from a backtest run.
+#[derive(Debug, Clone)]
+pub struct StrategyResult {
+    pub id: String,
+    pub pnl: f64,
+    pub equity_pnl: f64,
+    pub equity: f64,
+    pub friction: f64,
+    pub max_drawdown: f64,
+    pub trades: u64,
+    pub wins: u64,
+    pub losses: u64,
+    pub fills: u64,
+}
+
+/// Aggregate backtest result with per-strategy breakdown.
+#[derive(Debug, Clone)]
+pub struct BacktestResult {
+    pub total_pnl: f64,
+    pub max_drawdown: f64,
+    pub buy_hold_pnl: f64,
+    pub strategies: Vec<StrategyResult>,
+}
+
 pub fn run_backtest(cfg: Config, rows: &[CsvRow]) -> Result<(f64, f64)> {
     let exec_cfg = ExecConfig::from_env();
     let event_cfg = EventConfig::from_env();
@@ -437,6 +461,147 @@ pub fn run_backtest(cfg: Config, rows: &[CsvRow]) -> Result<(f64, f64)> {
         );
     }
     Ok((pnl, max_dd))
+}
+
+/// Run backtest returning structured per-strategy results.
+pub fn run_backtest_full(cfg: Config, rows: &[CsvRow]) -> Result<BacktestResult> {
+    let exec_cfg = ExecConfig::from_env();
+    let event_cfg = EventConfig::from_env();
+    let mut market = MarketState::new(cfg.clone());
+    let mut strategies = StrategyInstance::build_churn_set(cfg.clone());
+    let mut risk = RiskEngine::new(cfg.clone());
+    let mut metrics = MetricsEngine::new();
+    let mut pending: Vec<PendingOrder> = Vec::new();
+    let mut pipeline = FeaturePipeline::new(200, 200, 30, 200);
+    let mut friction: Vec<f64> = vec![0.0; strategies.len()];
+    let mut fills_count: Vec<u64> = vec![0; strategies.len()];
+    let initial_cash = 1000.0;
+    let mut buy_hold_entry = None;
+    let mut buy_hold_exit = None;
+    let mut last_row: Option<CsvRow> = None;
+
+    for row in rows {
+        last_row = Some(row.clone());
+        if buy_hold_entry.is_none() {
+            buy_hold_entry = Some(row.c);
+        }
+        buy_hold_exit = Some(row.c);
+        let candle = crate::exchange::Candle {
+            ts: row.ts, o: row.o, h: row.h, l: row.l, c: row.c, v: row.v,
+        };
+        market.on_candle(candle);
+        market.update_aux(
+            &cfg.symbol,
+            MarketAux {
+                funding_rate: row.funding, borrow_rate: row.borrow,
+                liquidation_score: row.liq, stable_depeg: row.depeg,
+                fetch_ts: row.ts,
+                has_funding: row.funding != 0.0, has_borrow: row.borrow != 0.0,
+                has_liquidations: row.liq != 0.0, has_depeg: row.depeg != 0.0,
+            },
+        );
+        let features = pipeline.update(row.c, row.funding, row.oi, row.liq, row.depeg);
+        let _events = detect_phase1(row.ts, &features, &event_cfg);
+
+        for (idx, inst) in strategies.iter_mut().enumerate() {
+            let view = market.view(&cfg.symbol);
+            let action = inst.strategy.update(view, &mut inst.state);
+            let guarded = risk.apply_with_price(&inst.state, action, row.ts, row.c);
+
+            let desired = match guarded {
+                Action::Hold => None,
+                Action::Close => {
+                    let qty = -inst.state.portfolio.position;
+                    Some((qty, row.c))
+                }
+                Action::Buy { qty } => Some((qty, row.c)),
+                Action::Sell { qty } => Some((-qty.abs(), row.c)),
+            };
+            if let Some((qty, _price)) = desired {
+                pending.push(PendingOrder { qty, submit_ts: row.ts, strategy_idx: idx });
+            }
+
+            let mut still_pending = Vec::new();
+            for order in pending.drain(..) {
+                if order.strategy_idx != idx {
+                    still_pending.push(order);
+                    continue;
+                }
+                let delay = latency_delay(order.submit_ts, order.strategy_idx, exec_cfg.latency_min, exec_cfg.latency_max);
+                if row.ts < order.submit_ts + delay {
+                    still_pending.push(order);
+                    continue;
+                }
+                let fill_qty = order.qty * exec_cfg.max_fill_ratio;
+                let fill_price = slippage_price(row.c, fill_qty, row.v, exec_cfg.slippage_k, view.indicators.vol);
+                let fee = fill_price * fill_qty.abs() * exec_cfg.fee_rate;
+                let slip_cost = (fill_price - row.c).abs() * fill_qty.abs();
+                friction[idx] += fee + slip_cost;
+                let realized = inst.state.portfolio.apply_fill(crate::state::Fill { price: fill_price, qty: fill_qty, fee, ts: row.ts });
+                fills_count[idx] += 1;
+                inst.state.metrics.pnl += realized;
+                if realized > 0.0 { inst.state.metrics.wins += 1; }
+                else if realized < 0.0 { inst.state.metrics.losses += 1; inst.state.last_loss_ts = row.ts; }
+                inst.state.last_trade_ts = row.ts;
+                let day = row.ts / 86_400;
+                if inst.state.trade_day != day { inst.state.trade_day = day; inst.state.trades_today = 0; }
+                inst.state.trades_today += 1;
+                let remainder = order.qty - fill_qty;
+                if remainder.abs() > 1e-9 {
+                    still_pending.push(PendingOrder { qty: remainder, submit_ts: row.ts, strategy_idx: idx });
+                }
+            }
+            pending = still_pending;
+            metrics.update(&mut inst.state);
+        }
+    }
+
+    // Force-close open positions
+    if let Some(last) = last_row {
+        let view = market.view(&cfg.symbol);
+        for (idx, inst) in strategies.iter_mut().enumerate() {
+            if inst.state.portfolio.position.abs() > 1e-9 {
+                let qty = -inst.state.portfolio.position;
+                let fill_price = slippage_price(last.c, qty, last.v, exec_cfg.slippage_k, view.indicators.vol);
+                let fee = fill_price * qty.abs() * exec_cfg.fee_rate;
+                friction[idx] += fee;
+                let realized = inst.state.portfolio.apply_fill(crate::state::Fill { price: fill_price, qty, fee, ts: last.ts });
+                inst.state.metrics.pnl += realized;
+                if realized > 0.0 { inst.state.metrics.wins += 1; }
+                else if realized < 0.0 { inst.state.metrics.losses += 1; }
+                fills_count[idx] += 1;
+            }
+        }
+    }
+
+    let total_pnl = strategies.iter().map(|s| s.state.metrics.pnl).sum::<f64>();
+    let max_dd = strategies.iter().map(|s| s.state.metrics.max_drawdown.abs()).fold(0.0, f64::max);
+    let buy_hold_pnl = match (buy_hold_entry, buy_hold_exit) {
+        (Some(e), Some(x)) => x - e,
+        _ => 0.0,
+    };
+
+    let strat_results: Vec<StrategyResult> = strategies.iter().enumerate().map(|(idx, inst)| {
+        StrategyResult {
+            id: inst.id.clone(),
+            pnl: inst.state.metrics.pnl,
+            equity_pnl: inst.state.portfolio.equity - initial_cash,
+            equity: inst.state.portfolio.equity,
+            friction: friction[idx],
+            max_drawdown: inst.state.metrics.max_drawdown.abs(),
+            trades: inst.state.metrics.wins + inst.state.metrics.losses,
+            wins: inst.state.metrics.wins,
+            losses: inst.state.metrics.losses,
+            fills: fills_count[idx],
+        }
+    }).collect();
+
+    Ok(BacktestResult {
+        total_pnl,
+        max_drawdown: max_dd,
+        buy_hold_pnl,
+        strategies: strat_results,
+    })
 }
 
 #[cfg(test)]

@@ -7,7 +7,7 @@ use std::fs::File;
 use std::io::{BufRead, BufReader};
 use std::path::Path;
 
-use arbitragefx::backtest::{parse_csv_line, run_backtest, CsvRow};
+use arbitragefx::backtest::{parse_csv_line, run_backtest, run_backtest_full, CsvRow};
 use arbitragefx::data::{analyze_csv, file_sha256, validate_schema};
 use arbitragefx::state::Config;
 
@@ -270,6 +270,35 @@ fn s14_regression_pnl_bounded() {
     assert!(pnl < 200.0, "PnL suspiciously positive: {:.4} (bug?)", pnl);
     assert!(dd < 0.03, "Drawdown too high: {:.4} (regression?)", dd);
     assert!(dd >= 0.0, "Negative drawdown: {:.4} (accounting bug)", dd);
+}
+
+// ---------------------------------------------------------------------------
+// S15b: Structured backtest — per-strategy results are self-consistent
+// ---------------------------------------------------------------------------
+#[test]
+fn s15b_structured_backtest_consistent() {
+    let csv = "data/btc_real_1h.csv";
+    if !Path::new(csv).exists() {
+        return;
+    }
+    let rows = load_rows(csv);
+    let cfg = Config::from_env();
+    let result = run_backtest_full(cfg, &rows).unwrap();
+
+    assert_eq!(result.strategies.len(), 12, "expected 12 strategies");
+    for s in &result.strategies {
+        assert!(s.equity > 0.0, "{} equity <= 0: {:.4}", s.id, s.equity);
+        assert!(s.max_drawdown >= 0.0, "{} negative drawdown", s.id);
+        assert!(s.max_drawdown <= 0.05, "{} drawdown > 5%: {:.4}", s.id, s.max_drawdown);
+        assert!(s.friction >= 0.0, "{} negative friction: {:.4}", s.id, s.friction);
+        assert_eq!(s.trades, s.wins + s.losses, "{} trades != wins+losses", s.id);
+        // Friction should be proportional to fills (more fills = more friction)
+        if s.fills > 0 {
+            assert!(s.friction > 0.0, "{} has {} fills but zero friction", s.id, s.fills);
+        }
+    }
+    // Buy-hold should be negative for this bear market dataset
+    assert!(result.buy_hold_pnl < 0.0, "buy-hold should be negative for bear data");
 }
 
 // ---------------------------------------------------------------------------
