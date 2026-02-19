@@ -1,0 +1,114 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Stratum Morphology Explorer · ArbitrageFX</title>
+  <style>
+    :root {
+      font-family: "IBM Plex Sans", "Inter", sans-serif;
+      background:#05060a;
+      color:#edf2f7;
+      line-height:1.5;
+    }
+    body{margin:0;min-height:100vh;background:radial-gradient(circle at 20% 20%, rgba(85,189,178,.2),transparent 40%),#05060a;display:flex;flex-direction:column;}
+    header{padding:1.5rem 2rem;border-bottom:1px solid rgba(255,255,255,.08);background:linear-gradient(180deg,rgba(10,12,18,.95),rgba(5,6,10,.95));}
+    header h1{margin:0;font-size:1.8rem;font-weight:600;letter-spacing:.3px;}
+    header p{margin:.4rem 0 0;color:#9ba3b4;max-width:720px;}
+    main{flex:1;display:grid;grid-template-columns:280px 1fr;gap:1rem;padding:2rem;}
+    .strata{display:flex;flex-direction:column;gap:.5rem;}
+    .stratum{border:1px solid rgba(255,255,255,.08);border-radius:10px;padding:1rem;background:rgba(13,17,25,.9);cursor:pointer;display:grid;grid-template-columns:auto auto;align-items:center;gap:1rem;transition:.2s;border-left:4px solid transparent;}
+    .stratum.active{border-left-color:#44f3c7;box-shadow:0 0 20px rgba(68,243,199,.25);}
+    .stratum span{font-size:1.1rem;font-weight:600;}
+    .stratum small{color:#7c8496;}
+    .details{border:1px solid rgba(255,255,255,.08);border-radius:16px;padding:2rem;background:rgba(10,12,18,.95);box-shadow:0 20px 60px rgba(0,0,0,.45);display:flex;flex-direction:column;gap:1rem;overflow:hidden;}
+    .details h2{margin:0;font-size:2rem;letter-spacing:.5px;}
+    .details .meta{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:.75rem;}
+    .meta-card{padding:1rem;border:1px solid rgba(255,255,255,.08);border-radius:10px;background:rgba(255,255,255,.02);} 
+    .meta-card strong{display:block;font-size:1.1rem;}
+    .note{margin:0;padding:1rem;border-radius:10px;background:rgba(68,243,199,.08);border:1px solid rgba(68,243,199,.2);color:#a7fff4;}
+    .timeline{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:.75rem;margin-top:1rem;}
+    .event-pill{padding:.75rem 1rem;border-radius:8px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.08);font-size:.9rem;}
+    @media (max-width:900px){main{grid-template-columns:1fr;}}
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Stratum Morphology Explorer</h1>
+    <p>Drawn from the ArbitrageFX engine, these seven strata describe where data lives, how long it persists, and how resilient the system is at each layer. Click a stratum to surface the artifacts it governs.</p>
+  </header>
+  <main>
+    <div class="strata" id="strata"></div>
+    <section class="details" id="detail">
+      <h2>Choose a stratum</h2>
+      <p class="note">This UI is a live-friendly interpretive layer over the engine's event log, regime state, invariants, and audit records.</p>
+      <div class="meta" id="meta"></div>
+      <div class="timeline" id="timeline"></div>
+    </section>
+  </main>
+  <script>
+    const strata = [
+      { id:1, name:'Ephemeral', duration:'~ms', storage:'CPU registers & stack', description:'Decisions executed inside a single tick, traced via EventBus events and direct intent logs.', artifacts:['EventBus tick', 'Command queue', 'Trace log entry'], affordance:'Inspect z-level signal formation; resets on every loop.' },
+      { id:2, name:'Volatile', duration:'~min', storage:'Heap & EngineState', description:'Current regime, risk counters, and Candle indicators live here until overwritten.', artifacts:['RegimeState', 'RiskState counters', 'Symbols map'], affordance:'Show current regime, drift, allow manual overrides when safe.' },
+      { id:3, name:'Session', duration:'~hrs', storage:'Temporary WAL snapshots & metrics', description:'Short-lived snapshots, error counters, and recent auxiliary data.', artifacts:['WAL segments', 'metrics.jsonl rolling entries', 'last investigation ticket'], affordance:'Surface near-term risk events, fill trends, throttle alerts.' },
+      { id:4, name:'Local', duration:'~days', storage:'Local files (metrics, manifest, logs)', description:'Session histories, manifest summaries, daily drift records.', artifacts:['manifest.json', 'metrics.jsonl', 'events.jsonl'], affordance:'Build daily summaries, show top anomalies and investigate commands.' },
+      { id:5, name:'Distributed', duration:'~months', storage:'Replicated logs & CRDTs (future)', description:'The event & audit logs we share with team/AI agents for reproducibility.', artifacts:['events.jsonl', 'metrics rollups'], affordance:'Browse regime timeline, allied dataset snapshots, cross-venue exposures.' },
+      { id:6, name:'Archival', duration:'~years', storage:'Database + WAL backups', description:'Immutable evidence (run hashes, manifest) for post-mortems.', artifacts:['WAL file', 'manifest', 'run directory'], affordance:'Provide deterministic replay + auditable state hashes to reviewers.' },
+      { id:7, name:'Geological', duration:'~eons', storage:'Source code + ethos documents', description:'The system design, docs, roadmaps, values (Right Speech etc.) that we embed forever.', artifacts:['docs/*', 'DECISIONS.md', 'DEV_JOURNAL.md'], affordance:'Reference ethic alignment, roadmap, and transformation narratives.' },
+    ];
+
+    const strataContainer = document.getElementById('strata');
+    const metaEl = document.getElementById('meta');
+    const timeline = document.getElementById('timeline');
+    const detailTitle = document.querySelector('.details h2');
+
+    function renderStrata() {
+      strataContainer.innerHTML = '';
+      strata.forEach(s => {
+        const el = document.createElement('div');
+        el.className = 'stratum';
+        el.innerHTML = `
+          <div>
+            <span>${s.name}</span>
+            <small>${s.duration} · ${s.storage}</small>
+          </div>
+          <div>${new Array(3).fill('•').join('')}</div>
+        `;
+        el.addEventListener('click', () => showDetails(s));
+        strataContainer.appendChild(el);
+      });
+    }
+
+    function showDetails(stratum) {
+      detailTitle.textContent = `${stratum.name} · ${stratum.duration}`;
+      metaEl.innerHTML = '';
+      timeline.innerHTML = '';
+
+      const cards = [
+        { label:'Storage', value:stratum.storage },
+        { label:'Purpose', value:stratum.description },
+        { label:'Affordance', value:stratum.affordance },
+      ];
+      cards.forEach(card => {
+        const div = document.createElement('div');
+        div.className = 'meta-card';
+        div.innerHTML = `<strong>${card.label}</strong><p>${card.value}</p>`;
+        metaEl.appendChild(div);
+      });
+
+      stratum.artifacts.forEach(artifact => {
+        const pill = document.createElement('div');
+        pill.className = 'event-pill';
+        pill.textContent = artifact;
+        timeline.appendChild(pill);
+      });
+
+      Array.from(strataContainer.children).forEach(child => child.classList.remove('active'));
+      const active = Array.from(strataContainer.children).find(child => child.innerHTML.includes(stratum.name));
+      active?.classList.add('active');
+    }
+
+    renderStrata();
+  </script>
+</body>
+</html>
