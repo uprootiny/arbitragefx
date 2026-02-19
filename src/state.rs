@@ -1389,4 +1389,236 @@ mod tests {
         let action = strat.update(view, &mut state);
         assert!(matches!(action, Action::Buy { .. }));
     }
+
+    // ==========================================================================
+    // SimpleMomentum: score-based entry and regime tests
+    // ==========================================================================
+
+    #[test]
+    fn test_simple_momentum_score_entry_buy() {
+        let mut cfg = test_config();
+        cfg.entry_threshold = 1.2;
+        cfg.edge_hurdle = 0.0001; // Low hurdle so score passes
+        cfg.edge_scale = 0.01;
+        let mut strat = SimpleMomentum { id: "test".to_string(), start_delay: 0, cfg };
+        let mut state = default_state();
+        // High positive score, no downtrend
+        let indicators = IndicatorSnapshot {
+            z_momentum: 2.0,
+            z_vol: 1.0,
+            z_volume_spike: 1.0,
+            z_stretch: 0.0,
+            ema_fast: 101.0,
+            ema_slow: 100.0, // slight uptrend
+            vol: 1.0,
+            vol_mean: 1.0,
+            ..Default::default()
+        };
+        let view = make_view(1000, 100.0, indicators, MarketAux::default());
+        let action = strat.update(view, &mut state);
+        // score = 2.0 + 0.3 + 0.5 = 2.8 > entry_threshold 1.2, not in downtrend
+        assert!(matches!(action, Action::Buy { .. }), "Should buy on strong positive score");
+    }
+
+    #[test]
+    fn test_simple_momentum_score_entry_sell() {
+        let mut cfg = test_config();
+        cfg.entry_threshold = 1.2;
+        cfg.edge_hurdle = 0.0001;
+        cfg.edge_scale = 0.01;
+        let mut strat = SimpleMomentum { id: "test".to_string(), start_delay: 0, cfg };
+        let mut state = default_state();
+        // High negative score, no uptrend
+        let indicators = IndicatorSnapshot {
+            z_momentum: -2.0,
+            z_vol: -1.0,
+            z_volume_spike: -1.0,
+            z_stretch: 0.0,
+            ema_fast: 99.0,
+            ema_slow: 100.0, // downtrend
+            vol: 1.0,
+            vol_mean: 1.0,
+            ..Default::default()
+        };
+        let view = make_view(1000, 100.0, indicators, MarketAux::default());
+        let action = strat.update(view, &mut state);
+        // score = -2.0 + -0.3 + -0.5 = -2.8 < -1.2, not in uptrend
+        assert!(matches!(action, Action::Sell { .. }), "Should sell on strong negative score");
+    }
+
+    #[test]
+    fn test_simple_momentum_edge_hurdle_blocks() {
+        let mut cfg = test_config();
+        cfg.edge_hurdle = 0.1; // Very high hurdle
+        cfg.edge_scale = 0.001;
+        let mut strat = SimpleMomentum { id: "test".to_string(), start_delay: 0, cfg };
+        let mut state = default_state();
+        // Weak score that won't pass edge hurdle
+        let indicators = IndicatorSnapshot {
+            z_momentum: 0.5,
+            z_vol: 0.1,
+            z_volume_spike: 0.1,
+            z_stretch: 0.0,
+            vol: 1.0,
+            vol_mean: 1.0,
+            ..Default::default()
+        };
+        let view = make_view(1000, 100.0, indicators, MarketAux::default());
+        let action = strat.update(view, &mut state);
+        // score = 0.5 + 0.03 + 0.05 = 0.58, edge = 0.58 * 0.001 = 0.00058 < 0.1
+        assert!(matches!(action, Action::Hold), "Should hold when edge < hurdle");
+    }
+
+    #[test]
+    fn test_simple_momentum_low_vol_momentum_follow() {
+        let mut cfg = test_config();
+        cfg.vol_low = 0.6;
+        cfg.mom_th = 0.4;
+        cfg.edge_hurdle = 0.0001;
+        cfg.edge_scale = 0.01;
+        cfg.entry_threshold = 100.0; // Disable score-based entry
+        let mut strat = SimpleMomentum { id: "test".to_string(), start_delay: 0, cfg };
+        let mut state = default_state();
+        // Low vol ratio (0.5 < 0.6) and positive momentum
+        let indicators = IndicatorSnapshot {
+            z_momentum: 0.8, // Above mom_th
+            z_vol: 0.5,
+            z_volume_spike: 0.5,
+            z_stretch: 0.0,
+            vol: 0.5,
+            vol_mean: 1.0, // vol_ratio = 0.5
+            ema_fast: 100.5,
+            ema_slow: 100.0,
+            ..Default::default()
+        };
+        let view = make_view(1000, 100.0, indicators, MarketAux::default());
+        let action = strat.update(view, &mut state);
+        assert!(matches!(action, Action::Buy { .. }), "Should buy on low-vol momentum follow");
+    }
+
+    #[test]
+    fn test_simple_momentum_high_vol_mean_revert() {
+        let mut cfg = test_config();
+        cfg.vol_high = 1.6;
+        cfg.stretch_th = 0.8;
+        cfg.edge_hurdle = 0.0001;
+        cfg.edge_scale = 0.01;
+        cfg.entry_threshold = 100.0; // Disable score-based entry
+        cfg.mom_th = 100.0;          // Disable low-vol path
+        let mut strat = SimpleMomentum { id: "test".to_string(), start_delay: 0, cfg };
+        let mut state = default_state();
+        // High vol ratio (2.0 > 1.6) and stretched below in downtrend
+        let indicators = IndicatorSnapshot {
+            z_momentum: 0.5,
+            z_vol: 1.0,
+            z_volume_spike: 1.0,
+            z_stretch: -1.5, // Stretched below
+            vol: 2.0,
+            vol_mean: 1.0, // vol_ratio = 2.0
+            ema_fast: 99.0,
+            ema_slow: 100.0, // downtrend
+            ..Default::default()
+        };
+        let view = make_view(1000, 100.0, indicators, MarketAux::default());
+        let action = strat.update(view, &mut state);
+        assert!(matches!(action, Action::Buy { .. }), "Should buy on high-vol mean reversion in downtrend");
+    }
+
+    #[test]
+    fn test_simple_momentum_strong_trend_override() {
+        let mut cfg = test_config();
+        cfg.edge_hurdle = 0.0001;
+        cfg.edge_scale = 0.01;
+        cfg.entry_threshold = 100.0; // Disable score-based entry
+        cfg.mom_th = 100.0;          // Disable low-vol path
+        cfg.vol_high = 100.0;        // Disable high-vol path
+        let mut strat = SimpleMomentum { id: "test".to_string(), start_delay: 0, cfg };
+        let mut state = default_state();
+        // Strong downtrend (>1% divergence) with negative momentum
+        let indicators = IndicatorSnapshot {
+            z_momentum: -0.8,
+            z_vol: 0.5,
+            z_volume_spike: 0.5,
+            z_stretch: 0.0,
+            vol: 1.0,
+            vol_mean: 1.0,
+            ema_fast: 98.0,
+            ema_slow: 100.0, // 2% divergence = strong downtrend
+            ..Default::default()
+        };
+        let view = make_view(1000, 100.0, indicators, MarketAux::default());
+        let action = strat.update(view, &mut state);
+        assert!(matches!(action, Action::Sell { .. }), "Should sell on strong downtrend override");
+    }
+
+    #[test]
+    fn test_simple_momentum_min_hold_blocks_tp() {
+        let mut cfg = test_config();
+        cfg.take_profit = 0.006;
+        cfg.stop_loss = 0.004;
+        cfg.min_hold_candles = 3;
+        cfg.candle_granularity = 300;
+        cfg.edge_hurdle = 0.0;
+        let mut strat = SimpleMomentum { id: "test".to_string(), start_delay: 0, cfg };
+        let mut state = StrategyState {
+            portfolio: PortfolioState {
+                cash: 900.0,
+                position: 0.1,
+                entry_price: 100.0,
+                equity: 1000.0,
+            },
+            metrics: MetricsState::default(),
+            last_trade_ts: 500,
+            last_loss_ts: 0,
+            trading_halted: false,
+            trades_today: 1,
+            trade_day: 0,
+            order_seq: 1,
+        };
+        // Price up 1% (should trigger TP) but only 1 candle elapsed (need 3)
+        let view = MarketView {
+            symbol: "BTCUSDT",
+            last: crate::strategy::Candle { ts: 800, o: 100.0, h: 102.0, l: 100.0, c: 101.0, v: 1000.0 },
+            indicators: IndicatorSnapshot { z_momentum: 2.0, vol: 1.0, vol_mean: 1.0, ..Default::default() },
+            aux: MarketAux::default(),
+        };
+        let action = strat.update(view, &mut state);
+        // 800 - 500 = 300 seconds < 3 * 300 = 900 seconds min hold
+        assert!(matches!(action, Action::Hold), "Should hold — min_hold_candles blocks TP");
+    }
+
+    #[test]
+    fn test_simple_momentum_min_hold_allows_stop_loss() {
+        let mut cfg = test_config();
+        cfg.stop_loss = 0.004;
+        cfg.min_hold_candles = 3;
+        cfg.candle_granularity = 300;
+        cfg.edge_hurdle = 0.0;
+        let mut strat = SimpleMomentum { id: "test".to_string(), start_delay: 0, cfg };
+        let mut state = StrategyState {
+            portfolio: PortfolioState {
+                cash: 900.0,
+                position: 0.1,
+                entry_price: 100.0,
+                equity: 1000.0,
+            },
+            metrics: MetricsState::default(),
+            last_trade_ts: 500,
+            last_loss_ts: 0,
+            trading_halted: false,
+            trades_today: 1,
+            trade_day: 0,
+            order_seq: 1,
+        };
+        // Price down 0.5% (triggers stop loss) with only 1 candle elapsed
+        let view = MarketView {
+            symbol: "BTCUSDT",
+            last: crate::strategy::Candle { ts: 800, o: 100.0, h: 100.0, l: 99.0, c: 99.5, v: 1000.0 },
+            indicators: IndicatorSnapshot { z_momentum: 2.0, vol: 1.0, vol_mean: 1.0, ..Default::default() },
+            aux: MarketAux::default(),
+        };
+        let action = strat.update(view, &mut state);
+        // Stop loss always fires regardless of min_hold_candles
+        assert!(matches!(action, Action::Close), "Stop loss fires even within min hold period");
+    }
 }
