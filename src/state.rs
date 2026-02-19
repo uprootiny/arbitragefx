@@ -51,6 +51,8 @@ pub struct Config {
     pub allow_unknown_regime: bool,
     pub max_latency_ms: u64,
     pub max_liquidity_spread: f64,
+    /// Minimum candles to hold a position before allowing exit (reduces overtrading)
+    pub min_hold_candles: u32,
 }
 
 impl Config {
@@ -102,6 +104,7 @@ impl Config {
             allow_unknown_regime: std::env::var("ALLOW_UNKNOWN_REGIME").map(|v| matches!(v.to_lowercase().as_str(), "1" | "true" | "yes")).unwrap_or(false),
             max_latency_ms: std::env::var("MAX_LATENCY_MS").ok().and_then(|v| v.parse().ok()).unwrap_or(300000),
             max_liquidity_spread: std::env::var("MAX_LIQ_SPREAD").ok().and_then(|v| v.parse().ok()).unwrap_or(0.05),
+            min_hold_candles: std::env::var("MIN_HOLD_CANDLES").ok().and_then(|v| v.parse().ok()).unwrap_or(0),
         }
     }
 
@@ -528,15 +531,25 @@ impl Strategy for SimpleMomentum {
             let price = market.last.c;
             let entry = state.portfolio.entry_price.max(1e-9);
             let move_pct = (price - entry) / entry;
-            if move_pct >= self.cfg.take_profit || move_pct <= -self.cfg.stop_loss {
-                return crate::strategy::Action::Close;
-            }
             let elapsed = now.saturating_sub(state.last_trade_ts);
-            if elapsed >= self.cfg.time_stop as u64 * self.cfg.candle_granularity {
+            let min_hold_secs = self.cfg.min_hold_candles as u64 * self.cfg.candle_granularity;
+
+            // Stop loss always fires regardless of min hold (capital preservation)
+            if move_pct <= -self.cfg.stop_loss {
                 return crate::strategy::Action::Close;
             }
-            if score.abs() < self.cfg.exit_threshold {
-                return crate::strategy::Action::Close;
+
+            // Other exits respect min hold period to reduce overtrading
+            if elapsed >= min_hold_secs {
+                if move_pct >= self.cfg.take_profit {
+                    return crate::strategy::Action::Close;
+                }
+                if elapsed >= self.cfg.time_stop as u64 * self.cfg.candle_granularity {
+                    return crate::strategy::Action::Close;
+                }
+                if score.abs() < self.cfg.exit_threshold {
+                    return crate::strategy::Action::Close;
+                }
             }
             return crate::strategy::Action::Hold;
         }
@@ -639,19 +652,29 @@ impl Strategy for CarryOpportunistic {
 
         // Risk throttling: exit on vol spike or decaying score.
         if state.portfolio.position != 0.0 {
-            let vol_ratio = if market.indicators.vol_mean > 0.0 {
-                market.indicators.vol / market.indicators.vol_mean
-            } else {
-                1.0
-            };
-            if vol_ratio > self.cfg.vol_pause_mult {
-                return crate::strategy::Action::Close;
-            }
             let price = market.last.c;
             let entry = state.portfolio.entry_price.max(1e-9);
             let move_pct = (price - entry) / entry;
-            if move_pct >= self.cfg.take_profit || move_pct <= -self.cfg.stop_loss {
+
+            // Stop loss always fires (capital preservation overrides hold period)
+            if move_pct <= -self.cfg.stop_loss {
                 return crate::strategy::Action::Close;
+            }
+
+            let elapsed = market.last.ts.saturating_sub(state.last_trade_ts);
+            let min_hold_secs = self.cfg.min_hold_candles as u64 * self.cfg.candle_granularity;
+            if elapsed >= min_hold_secs {
+                let vol_ratio = if market.indicators.vol_mean > 0.0 {
+                    market.indicators.vol / market.indicators.vol_mean
+                } else {
+                    1.0
+                };
+                if vol_ratio > self.cfg.vol_pause_mult {
+                    return crate::strategy::Action::Close;
+                }
+                if move_pct >= self.cfg.take_profit {
+                    return crate::strategy::Action::Close;
+                }
             }
         }
 
@@ -712,6 +735,7 @@ mod tests {
             allow_unknown_regime: false,
             max_latency_ms: 300000,
             max_liquidity_spread: 0.01,
+            min_hold_candles: 0,
         }
     }
 
