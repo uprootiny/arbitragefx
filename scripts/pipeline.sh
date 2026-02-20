@@ -62,9 +62,40 @@ for CSV in "${CSVS[@]}"; do
     echo "" | tee -a "$REPORT"
 done
 
-# Step 3: Summary
-echo "--- Step 3: Summary ---" | tee -a "$REPORT"
+# Step 3: Walk-forward validation
+echo "--- Step 3: Walk-Forward Validation ---" | tee -a "$REPORT"
+WF_DIR="out/walk_forward"
+mkdir -p "$WF_DIR"
+for CSV in "${CSVS[@]}"; do
+    if [ ! -f "$CSV" ]; then
+        continue
+    fi
+    BASENAME=$(basename "$CSV" .csv)
+    echo "  Walk-forward $BASENAME (4 windows, 70/30)..." | tee -a "$REPORT"
+    WF_OUT=$(cargo run --release --bin walk_forward -- "$CSV" 4 0.7 2>/dev/null || echo "WF_FAILED")
+    if echo "$WF_OUT" | grep -q "WF_FAILED"; then
+        echo "    FAILED" | tee -a "$REPORT"
+        continue
+    fi
+    SURVIVORS=$(echo "$WF_OUT" | grep -c "YES$" || true)
+    TOTAL=$(echo "$WF_OUT" | grep -c "no$\|YES$" || true)
+    echo "    Survivors: $SURVIVORS/$TOTAL after Bonferroni correction" | tee -a "$REPORT"
+done
+# Copy last walk-forward JSON for hypothesis updater
+cp -f "$WF_DIR/report.json" "$WF_DIR/${DATE}.json" 2>/dev/null || true
+echo "" | tee -a "$REPORT"
+
+# Step 4: Hypothesis update (dry-run)
+echo "--- Step 4: Hypothesis Update (dry-run) ---" | tee -a "$REPORT"
+if [ -f "$WF_DIR/report.json" ]; then
+    cargo run --release --bin update_ledger -- "$WF_DIR/report.json" 2>/dev/null | tee -a "$REPORT"
+fi
+echo "" | tee -a "$REPORT"
+
+# Step 5: Summary
+echo "--- Step 5: Summary ---" | tee -a "$REPORT"
 echo "  Report written to: $REPORT" | tee -a "$REPORT"
+echo "  Walk-forward JSON: $WF_DIR/${DATE}.json" | tee -a "$REPORT"
 echo "  Timestamp: $(date -Iseconds)" | tee -a "$REPORT"
 echo "" | tee -a "$REPORT"
 echo "Done."
