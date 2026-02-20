@@ -36,11 +36,20 @@ fn main() {
     let cached_test_count = count_tests_fast();
     println!("  Cached test count: {}", cached_test_count);
 
+    // Pre-load workbench HTML for serving
+    let workbench_html = std::fs::read_to_string("docs/workbench.html")
+        .or_else(|_| std::fs::read_to_string("out/workbench/index.html"))
+        .unwrap_or_else(|_| {
+            "<html><body><h1>Workbench not generated</h1><p>Run: cargo run --release --bin workbench</p></body></html>".into()
+        });
+
     println!("Epistemic Server running at http://localhost:{}", port);
     println!();
     println!("Endpoints:");
-    println!("  GET /api/state  - Full epistemic state as JSON");
-    println!("  GET /api/health - Health check");
+    println!("  GET /              - Workbench dashboard");
+    println!("  GET /api/state     - Full epistemic state as JSON");
+    println!("  GET /api/health    - Health check");
+    println!("  GET /api/summary   - Compact status summary");
     println!();
 
     for stream in listener.incoming() {
@@ -57,7 +66,12 @@ fn main() {
             _ => continue,
         };
 
-        let (status, content_type, body) = if request.starts_with("GET /api/state") {
+        let (status, content_type, body) = if request.starts_with("GET / ")
+            || request.starts_with("GET / HTTP")
+            || request == "GET /"
+        {
+            ("200 OK", "text/html; charset=utf-8", workbench_html.clone())
+        } else if request.starts_with("GET /api/state") {
             let state = EpistemicState::from_system();
             ("200 OK", "application/json", state.to_json())
         } else if request.starts_with("GET /api/health") {
