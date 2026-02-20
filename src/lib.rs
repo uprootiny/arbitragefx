@@ -23,3 +23,4 @@ pub mod filters;
 pub mod sizing;
 pub mod hypothesis;
 pub mod epistemic;
+pub mod walk_forward;
