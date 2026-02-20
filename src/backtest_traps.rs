@@ -22,7 +22,7 @@ pub struct TrapViolation {
     pub guard_recommendation: &'static str,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
 pub enum Severity {
     /// Results are invalid
     Critical,
@@ -721,6 +721,166 @@ pub fn print_checklist() {
         println!("    Module: {}", trap.module);
         println!("    Guard: {}\n", trap.guard);
     }
+}
+
+/// Guard status for a backtest trap.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
+pub enum GuardStatus {
+    Guarded,
+    Partial,
+    Unguarded,
+}
+
+/// Status of a backtest trap with its guard implementation.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct TrapStatus {
+    pub id: u8,
+    pub name: &'static str,
+    pub severity: Severity,
+    pub guard: GuardStatus,
+    pub evidence: &'static str,
+}
+
+/// Returns the current guard status for all 18 backtest traps.
+pub fn trap_status() -> Vec<TrapStatus> {
+    vec![
+        TrapStatus {
+            id: 1,
+            name: "Close omniscience",
+            severity: Severity::Critical,
+            guard: GuardStatus::Partial,
+            evidence: "Latency model delays execution; but latency_min can be 0",
+        },
+        TrapStatus {
+            id: 2,
+            name: "Warmup pollution",
+            severity: Severity::High,
+            guard: GuardStatus::Guarded,
+            evidence: "FeaturePipeline pre-fills 200 candles before trading",
+        },
+        TrapStatus {
+            id: 3,
+            name: "Global normalization",
+            severity: Severity::Critical,
+            guard: GuardStatus::Guarded,
+            evidence: "Welford online algorithm, no lookahead",
+        },
+        TrapStatus {
+            id: 4,
+            name: "Fixed slippage",
+            severity: Severity::Medium,
+            guard: GuardStatus::Guarded,
+            evidence: "Volatility-multiplied slippage model in ExecConfig",
+        },
+        TrapStatus {
+            id: 5,
+            name: "Perfect fill assumption",
+            severity: Severity::High,
+            guard: GuardStatus::Partial,
+            evidence: "Partial fill sim exists; fill_prob model simplified",
+        },
+        TrapStatus {
+            id: 6,
+            name: "Order model divergence",
+            severity: Severity::Critical,
+            guard: GuardStatus::Guarded,
+            evidence: "Same reducer for backtest and live",
+        },
+        TrapStatus {
+            id: 7,
+            name: "Out-of-order events",
+            severity: Severity::Medium,
+            guard: GuardStatus::Unguarded,
+            evidence: "No scrambler layer in backtest",
+        },
+        TrapStatus {
+            id: 8,
+            name: "Arrival time conflation",
+            severity: Severity::Medium,
+            guard: GuardStatus::Unguarded,
+            evidence: "No observed_at delay model",
+        },
+        TrapStatus {
+            id: 9,
+            name: "Aux data clock misalign",
+            severity: Severity::High,
+            guard: GuardStatus::Partial,
+            evidence: "TTL check exists but no published_at tracking",
+        },
+        TrapStatus {
+            id: 10,
+            name: "Staleness as zero",
+            severity: Severity::High,
+            guard: GuardStatus::Guarded,
+            evidence: "TTL-based staleness detection in data module",
+        },
+        TrapStatus {
+            id: 11,
+            name: "Selection bias",
+            severity: Severity::High,
+            guard: GuardStatus::Unguarded,
+            evidence: "No pre-registration; user controls dataset choice",
+        },
+        TrapStatus {
+            id: 12,
+            name: "Multiple testing",
+            severity: Severity::Critical,
+            guard: GuardStatus::Guarded,
+            evidence: "Bonferroni correction in walk_forward",
+        },
+        TrapStatus {
+            id: 13,
+            name: "Tail risk hidden",
+            severity: Severity::High,
+            guard: GuardStatus::Partial,
+            evidence: "Max drawdown tracked; CVaR not reported",
+        },
+        TrapStatus {
+            id: 14,
+            name: "Regime collapse masked",
+            severity: Severity::High,
+            guard: GuardStatus::Guarded,
+            evidence: "regime.rs classifies datasets; bench tests all 4 regimes",
+        },
+        TrapStatus {
+            id: 15,
+            name: "Clean room vs adversarial",
+            severity: Severity::High,
+            guard: GuardStatus::Unguarded,
+            evidence: "No chaos injection in backtest",
+        },
+        TrapStatus {
+            id: 16,
+            name: "WAL determinism",
+            severity: Severity::Critical,
+            guard: GuardStatus::Guarded,
+            evidence: "WAL replay tested; determinism assertions in place",
+        },
+        TrapStatus {
+            id: 17,
+            name: "Paper/live code divergence",
+            severity: Severity::Critical,
+            guard: GuardStatus::Guarded,
+            evidence: "Single code path; adapters differ only in HTTP",
+        },
+        TrapStatus {
+            id: 18,
+            name: "Rounding/min-notional",
+            severity: Severity::Medium,
+            guard: GuardStatus::Unguarded,
+            evidence: "Backtest uses continuous sizes; no exchange filters",
+        },
+    ]
+}
+
+/// Compute integrity score as (guarded_count, total).
+pub fn integrity_score() -> (usize, usize) {
+    let traps = trap_status();
+    let guarded = traps
+        .iter()
+        .filter(|t| t.guard == GuardStatus::Guarded)
+        .count();
+    (guarded, traps.len())
 }
 
 #[cfg(test)]

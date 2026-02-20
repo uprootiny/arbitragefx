@@ -19,6 +19,37 @@ struct Hypothesis {
     assessment: String,
 }
 
+/// STV history entry from JSONL.
+#[derive(Debug, Serialize, serde::Deserialize)]
+struct StvHistoryEntry {
+    ts: String,
+    hypothesis_id: String,
+    old_stv: [f64; 2],
+    new_stv: [f64; 2],
+    dataset: String,
+    observation: String,
+}
+
+/// Trap status for dashboard display.
+#[derive(Debug, Serialize)]
+struct TrapStatusEntry {
+    id: u8,
+    name: String,
+    severity: String,
+    guard: String,
+    evidence: String,
+}
+
+/// Uncertainty map categories.
+#[derive(Debug, Serialize, Default)]
+struct UncertaintyMap {
+    well_established: Vec<String>,
+    supported: Vec<String>,
+    contested: Vec<String>,
+    fragile: Vec<String>,
+    untested: Vec<String>,
+}
+
 /// All data feeding the workbench dashboard.
 #[derive(Debug, Serialize)]
 struct WorkbenchData {
@@ -31,6 +62,10 @@ struct WorkbenchData {
     run_history: Vec<RunEntry>,
     test_count: usize,
     dataset_count: usize,
+    stv_history: Vec<StvHistoryEntry>,
+    trap_status: Vec<TrapStatusEntry>,
+    uncertainty_map: UncertaintyMap,
+    integrity_score: String,
 }
 
 #[derive(Debug, Serialize)]
@@ -215,6 +250,85 @@ fn load_bench_history() -> Vec<BenchHistoryEntry> {
     entries
 }
 
+/// Load STV history from JSONL file.
+fn load_stv_history() -> Vec<StvHistoryEntry> {
+    let path = "out/ledger_history/updates.jsonl";
+    let content = match fs::read_to_string(path) {
+        Ok(c) => c,
+        Err(_) => return Vec::new(),
+    };
+    content
+        .lines()
+        .filter_map(|l| serde_json::from_str(l).ok())
+        .collect()
+}
+
+/// Load trap status from backtest_traps module.
+fn load_trap_status() -> Vec<TrapStatusEntry> {
+    use arbitragefx::backtest_traps::trap_status;
+    trap_status()
+        .into_iter()
+        .map(|t| TrapStatusEntry {
+            id: t.id,
+            name: t.name.to_string(),
+            severity: format!("{:?}", t.severity),
+            guard: format!("{:?}", t.guard),
+            evidence: t.evidence.to_string(),
+        })
+        .collect()
+}
+
+/// Parse uncertainty map from hypothesis_ledger.edn.
+fn parse_uncertainty_map() -> UncertaintyMap {
+    let content = match fs::read_to_string("hypothesis_ledger.edn") {
+        Ok(c) => c,
+        Err(_) => return UncertaintyMap::default(),
+    };
+    let mut map = UncertaintyMap::default();
+    let mut current_category = "";
+
+    for line in content.lines() {
+        let trimmed = line.trim();
+        if trimmed.starts_with(":well-established") {
+            current_category = "well_established";
+        } else if trimmed.starts_with(":supported") {
+            current_category = "supported";
+        } else if trimmed.starts_with(":contested") {
+            current_category = "contested";
+        } else if trimmed.starts_with(":fragile") {
+            current_category = "fragile";
+        } else if trimmed.starts_with(":untested") {
+            current_category = "untested";
+        }
+
+        // Extract quoted strings from array lines
+        let mut rest = trimmed;
+        while let Some(start) = rest.find('"') {
+            rest = &rest[start + 1..];
+            if let Some(end) = rest.find('"') {
+                let item = rest[..end].to_string();
+                match current_category {
+                    "well_established" => map.well_established.push(item),
+                    "supported" => map.supported.push(item),
+                    "contested" => map.contested.push(item),
+                    "fragile" => map.fragile.push(item),
+                    "untested" => map.untested.push(item),
+                    _ => {}
+                }
+                rest = &rest[end + 1..];
+            } else {
+                break;
+            }
+        }
+
+        // Reset category on closing bracket of uncertainty-map
+        if trimmed.ends_with("}}") {
+            current_category = "";
+        }
+    }
+    map
+}
+
 /// Load run history from out/reports/*.txt.
 fn load_run_history() -> Vec<RunEntry> {
     let dir = Path::new("out/reports");
@@ -258,6 +372,11 @@ fn main() {
     let hypotheses = parse_hypotheses();
     let bench_history = load_bench_history();
     let run_history = load_run_history();
+    let stv_history = load_stv_history();
+    let trap_status = load_trap_status();
+    let uncertainty_map = parse_uncertainty_map();
+    let (guarded, total) = arbitragefx::backtest_traps::integrity_score();
+    let integrity_score = format!("{}/{}", guarded, total);
     let test_count = count_tests();
     let dataset_count = count_datasets();
 
@@ -276,6 +395,22 @@ fn main() {
     );
     println!("  bench_history: {} entries", bench_history.len());
     println!("  run_history: {} entries", run_history.len());
+    println!("  stv_history: {} entries", stv_history.len());
+    println!("  trap_status: {} traps", trap_status.len());
+    println!(
+        "  uncertainty_map: {} categories",
+        [
+            &uncertainty_map.well_established,
+            &uncertainty_map.supported,
+            &uncertainty_map.contested,
+            &uncertainty_map.fragile,
+            &uncertainty_map.untested
+        ]
+        .iter()
+        .filter(|v| !v.is_empty())
+        .count()
+    );
+    println!("  integrity: {}", integrity_score);
     println!("  tests: {}", test_count);
     println!("  datasets: {}", dataset_count);
 
@@ -289,6 +424,10 @@ fn main() {
         run_history,
         test_count,
         dataset_count,
+        stv_history,
+        trap_status,
+        uncertainty_map,
+        integrity_score,
     };
 
     let json_blob = serde_json::to_string(&data).unwrap();
@@ -399,6 +538,42 @@ const TEMPLATE: &str = r##"<!DOCTYPE html>
     .section { margin-bottom: 1.5rem; }
     .empty-state { color: #484f58; font-style: italic; font-size: 0.85rem; padding: 1rem; }
     footer { margin-top: 3rem; color: #484f58; font-size: 0.75rem; border-top: 1px solid var(--border); padding-top: 1rem; }
+
+    /* Kanban board for uncertainty map */
+    .kanban { display: flex; gap: 0.6rem; margin: 0.5rem 0; overflow-x: auto; }
+    .kanban-col {
+      flex: 1; min-width: 160px; background: var(--card-bg); border: 1px solid var(--border);
+      border-radius: 6px; padding: 0.6rem;
+    }
+    .kanban-col h4 {
+      font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.5px;
+      margin-bottom: 0.5rem; padding-bottom: 0.3rem; border-bottom: 2px solid var(--border);
+    }
+    .kanban-item {
+      background: var(--bg); border: 1px solid var(--border); border-radius: 4px;
+      padding: 0.4rem 0.6rem; margin-bottom: 0.3rem; font-size: 0.75rem; font-family: var(--mono);
+    }
+    .kanban-empty { color: #484f58; font-style: italic; font-size: 0.7rem; }
+
+    /* Sparkline */
+    .sparkline-container { display: inline-block; vertical-align: middle; margin-left: 0.5rem; }
+    .sparkline-svg { vertical-align: middle; }
+
+    /* Trap checklist */
+    .trap-guard { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 0.4rem; vertical-align: middle; }
+    .trap-guard-Guarded { background: var(--green); }
+    .trap-guard-Partial { background: var(--yellow); }
+    .trap-guard-Unguarded { background: var(--red); }
+
+    /* Trend chart */
+    .trend-svg { margin: 0.5rem 0; }
+
+    /* Leaderboard */
+    .leaderboard { display: flex; gap: 0.6rem; margin: 0.5rem 0; flex-wrap: wrap; }
+    .leaderboard-col { flex: 1; min-width: 140px; }
+    .leaderboard-col h4 { font-size: 0.7rem; color: #8b949e; text-transform: uppercase; margin-bottom: 0.3rem; }
+    .rank-item { font-size: 0.7rem; font-family: var(--mono); padding: 0.15rem 0; display: flex; justify-content: space-between; }
+    .rank-pos { color: #8b949e; min-width: 1.2rem; }
   </style>
 </head>
 <body>
@@ -430,6 +605,36 @@ const TEMPLATE: &str = r##"<!DOCTYPE html>
   <div class="section">
     <h2>Hypothesis Ledger</h2>
     <div id="hypotheses"><p class="empty-state">No hypotheses found</p></div>
+  </div>
+
+  <!-- Evidence Timeline -->
+  <div class="section">
+    <h2>Evidence Timeline</h2>
+    <div id="timeline"><p class="empty-state">No evidence history. Run: cargo run --bin update_ledger</p></div>
+  </div>
+
+  <!-- Uncertainty Map -->
+  <div class="section">
+    <h2>Uncertainty Map</h2>
+    <div id="uncertainty"><p class="empty-state">No uncertainty map data</p></div>
+  </div>
+
+  <!-- Trap Checklist -->
+  <div class="section">
+    <h2>Backtest Trap Checklist</h2>
+    <div id="traps"><p class="empty-state">No trap status data</p></div>
+  </div>
+
+  <!-- Regime Leaderboard -->
+  <div class="section">
+    <h2>Regime Leaderboard</h2>
+    <div id="leaderboard"><p class="empty-state">No bench data for leaderboard</p></div>
+  </div>
+
+  <!-- Resource Trends -->
+  <div class="section">
+    <h2>Resource Trends</h2>
+    <div id="trends"><p class="empty-state">No bench history for trends</p></div>
   </div>
 
   <!-- Run History -->
@@ -467,6 +672,8 @@ const TEMPLATE: &str = r##"<!DOCTYPE html>
       <div class="card"><h3>Bench Time</h3><div class="val">${totalMs}ms</div><div class="detail">${benchTs}</div></div>
       <div class="card"><h3>WF Survivors</h3><div class="val">${survivors}/${totalStrats}</div><div class="detail">after Bonferroni</div></div>
       <div class="card"><h3>Hypotheses</h3><div class="val">${hypoCount}</div><div class="detail">${established} established</div></div>
+      <div class="card"><h3>Integrity</h3><div class="val">${D.integrity_score}</div><div class="detail">traps guarded</div></div>
+      <div class="card"><h3>Evidence</h3><div class="val">${D.stv_history.length}</div><div class="detail">STV updates logged</div></div>
     `;
   })();
 
@@ -603,6 +810,201 @@ const TEMPLATE: &str = r##"<!DOCTYPE html>
     }
     html += '</table>';
     el.innerHTML = html;
+  })();
+
+  // Evidence Timeline — sparklines per hypothesis
+  (() => {
+    if (D.stv_history.length === 0) return;
+    const el = document.getElementById('timeline');
+
+    // Group by hypothesis_id
+    const byH = {};
+    for (const e of D.stv_history) {
+      if (!byH[e.hypothesis_id]) byH[e.hypothesis_id] = [];
+      byH[e.hypothesis_id].push(e);
+    }
+
+    // Generate sparkline SVG
+    function sparkline(entries, field, color) {
+      const w = 120, h = 24, pad = 2;
+      const vals = entries.map(e => e.new_stv[field]);
+      if (vals.length < 2) {
+        const v = vals[0] || 0;
+        return `<svg class="sparkline-svg" width="${w}" height="${h}"><circle cx="${w/2}" cy="${h - pad - v*(h-2*pad)}" r="2" fill="${color}"/></svg>`;
+      }
+      const pts = vals.map((v, i) => {
+        const x = pad + (i / (vals.length - 1)) * (w - 2*pad);
+        const y = h - pad - v * (h - 2*pad);
+        return `${x.toFixed(1)},${y.toFixed(1)}`;
+      }).join(' ');
+      return `<svg class="sparkline-svg" width="${w}" height="${h}"><polyline points="${pts}" fill="none" stroke="${color}" stroke-width="1.5"/></svg>`;
+    }
+
+    let html = '<table><tr><th>Hypothesis</th><th>Strength</th><th>Confidence</th><th>Updates</th><th>Latest</th></tr>';
+    const ids = Object.keys(byH).sort();
+    for (const id of ids) {
+      const entries = byH[id];
+      const last = entries[entries.length - 1];
+      const sSparkline = sparkline(entries, 0, '#3fb950');
+      const cSparkline = sparkline(entries, 1, '#58a6ff');
+      html += `<tr>
+        <td class="mono">${id}</td>
+        <td><span class="sparkline-container">${sSparkline}</span> <span class="mono" style="font-size:0.7rem;">${last.new_stv[0].toFixed(2)}</span></td>
+        <td><span class="sparkline-container">${cSparkline}</span> <span class="mono" style="font-size:0.7rem;">${last.new_stv[1].toFixed(2)}</span></td>
+        <td class="mono">${entries.length}</td>
+        <td style="font-size:0.7rem;color:#8b949e;" title="${last.observation}">${last.dataset} — ${last.observation.substring(0, 50)}${last.observation.length > 50 ? '...' : ''}</td>
+      </tr>`;
+    }
+    html += '</table>';
+    el.innerHTML = html;
+  })();
+
+  // Uncertainty Map — Kanban board
+  (() => {
+    const um = D.uncertainty_map;
+    const cats = [
+      { key: 'well_established', label: 'Well-Established', color: 'var(--green)', border: '#1a4128' },
+      { key: 'supported', label: 'Supported', color: '#6fdd8b', border: '#2ea043' },
+      { key: 'contested', label: 'Contested', color: 'var(--yellow)', border: '#4d3800' },
+      { key: 'fragile', label: 'Fragile', color: 'var(--red)', border: '#4d0000' },
+      { key: 'untested', label: 'Untested', color: '#8b949e', border: '#30363d' },
+    ];
+    const hasAny = cats.some(c => (um[c.key] || []).length > 0);
+    if (!hasAny) return;
+
+    const el = document.getElementById('uncertainty');
+    let html = '<div class="kanban">';
+    for (const cat of cats) {
+      const items = um[cat.key] || [];
+      html += `<div class="kanban-col" style="border-top: 3px solid ${cat.color};">`;
+      html += `<h4 style="color: ${cat.color};">${cat.label} (${items.length})</h4>`;
+      if (items.length === 0) {
+        html += '<div class="kanban-empty">none</div>';
+      } else {
+        for (const item of items) {
+          html += `<div class="kanban-item">${item}</div>`;
+        }
+      }
+      html += '</div>';
+    }
+    html += '</div>';
+    el.innerHTML = html;
+  })();
+
+  // Trap Checklist — 18-point backtest trap integrity
+  (() => {
+    if (D.trap_status.length === 0) return;
+    const el = document.getElementById('traps');
+
+    const guarded = D.trap_status.filter(t => t.guard === 'Guarded').length;
+    const partial = D.trap_status.filter(t => t.guard === 'Partial').length;
+    const unguarded = D.trap_status.filter(t => t.guard === 'Unguarded').length;
+
+    let html = `<p style="font-size:0.8rem;color:#8b949e;margin-bottom:0.5rem;">
+      <span class="badge badge-green">${guarded} guarded</span>
+      <span class="badge badge-yellow">${partial} partial</span>
+      <span class="badge badge-red">${unguarded} unguarded</span>
+    </p>`;
+    html += '<table><tr><th>#</th><th></th><th>Trap</th><th>Severity</th><th>Guard</th><th>Evidence</th></tr>';
+    for (const t of D.trap_status) {
+      const sevClass = t.severity === 'Critical' ? 'badge-red' : t.severity === 'High' ? 'badge-yellow' : 'badge-blue';
+      html += `<tr>
+        <td class="mono">${t.id}</td>
+        <td><span class="trap-guard trap-guard-${t.guard}"></span></td>
+        <td>${t.name}</td>
+        <td><span class="badge ${sevClass}">${t.severity}</span></td>
+        <td><span class="badge badge-${t.guard === 'Guarded' ? 'green' : t.guard === 'Partial' ? 'yellow' : 'red'}">${t.guard}</span></td>
+        <td style="font-size:0.7rem;color:#8b949e;">${t.evidence}</td>
+      </tr>`;
+    }
+    html += '</table>';
+    el.innerHTML = html;
+  })();
+
+  // Regime Leaderboard — ranked strategies per regime
+  (() => {
+    if (!D.bench) return;
+    const el = document.getElementById('leaderboard');
+    const datasets = D.bench.datasets;
+    if (datasets.length === 0 || !datasets[0].backtest_result) return;
+
+    let html = '<div class="leaderboard">';
+    for (const d of datasets) {
+      const regime = d.name.replace('btc_', '').replace('_1h', '');
+      const strats = d.backtest_result.strategies.slice().sort((a, b) => b.equity_pnl - a.equity_pnl);
+      html += `<div class="leaderboard-col">`;
+      html += `<h4>${regime}</h4>`;
+      for (let i = 0; i < strats.length; i++) {
+        const s = strats[i];
+        const pnlColor = s.equity_pnl >= 0 ? 'var(--green)' : 'var(--red)';
+        const ddSafe = s.max_drawdown <= 0.02;
+        const safeIcon = ddSafe ? ' &#9679;' : '';
+        html += `<div class="rank-item">
+          <span><span class="rank-pos">${i+1}.</span> ${s.id}</span>
+          <span style="color:${pnlColor};">${s.equity_pnl >= 0 ? '+' : ''}${s.equity_pnl.toFixed(2)}${ddSafe ? '<span style="color:var(--green);font-size:0.6rem;" title="DD < 2%"> &#x2713;</span>' : ''}</span>
+        </div>`;
+      }
+      html += '</div>';
+    }
+    html += '</div>';
+    html += '<div style="font-size:0.7rem;color:#484f58;margin-top:0.3rem;">&#x2713; = max drawdown &lt; 2%. Ranked by equity PnL.</div>';
+    el.innerHTML = html;
+  })();
+
+  // Resource Trends — throughput + candles over bench history
+  (() => {
+    if (D.bench_history.length < 1) return;
+    const el = document.getElementById('trends');
+    const data = D.bench_history;
+    const w = 600, h = 120, pad = 40;
+
+    const maxThroughput = Math.max(...data.map(d => d.avg_throughput), 1);
+    const maxMs = Math.max(...data.map(d => d.total_ms), 1);
+
+    let svg = `<svg class="trend-svg" viewBox="0 0 ${w} ${h}" style="width:100%;max-width:${w}px;">`;
+    // Background
+    svg += `<rect x="0" y="0" width="${w}" height="${h}" fill="var(--card-bg)" rx="4"/>`;
+
+    if (data.length === 1) {
+      // Single point — show as centered bars
+      const barW = 40;
+      const tH = (data[0].avg_throughput / maxThroughput) * (h - pad);
+      svg += `<rect x="${w/2 - barW - 5}" y="${h - pad - tH}" width="${barW}" height="${tH}" fill="var(--accent)" opacity="0.7" rx="2"/>`;
+      svg += `<text x="${w/2 - barW/2 - 5}" y="${h - pad + 12}" fill="#8b949e" font-size="9" text-anchor="middle">${data[0].date}</text>`;
+      svg += `<text x="${w/2 - barW/2 - 5}" y="${h - pad - tH - 4}" fill="var(--accent)" font-size="9" text-anchor="middle">${Math.round(data[0].avg_throughput)} c/s</text>`;
+    } else {
+      // Multiple points — line chart
+      const tPts = data.map((d, i) => {
+        const x = pad + (i / (data.length - 1)) * (w - 2*pad);
+        const y = h - pad - (d.avg_throughput / maxThroughput) * (h - 2*pad);
+        return `${x.toFixed(1)},${y.toFixed(1)}`;
+      }).join(' ');
+      svg += `<polyline points="${tPts}" fill="none" stroke="var(--accent)" stroke-width="2"/>`;
+
+      // Data points
+      for (let i = 0; i < data.length; i++) {
+        const x = pad + (i / (data.length - 1)) * (w - 2*pad);
+        const y = h - pad - (data[i].avg_throughput / maxThroughput) * (h - 2*pad);
+        svg += `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="3" fill="var(--accent)"/>`;
+        svg += `<text x="${x.toFixed(1)}" y="${h - pad + 12}" fill="#8b949e" font-size="8" text-anchor="middle">${data[i].date.substring(5)}</text>`;
+      }
+
+      // Time bars overlay
+      const mPts = data.map((d, i) => {
+        const x = pad + (i / (data.length - 1)) * (w - 2*pad);
+        const y = h - pad - (d.total_ms / maxMs) * (h - 2*pad);
+        return `${x.toFixed(1)},${y.toFixed(1)}`;
+      }).join(' ');
+      svg += `<polyline points="${mPts}" fill="none" stroke="var(--yellow)" stroke-width="1.5" stroke-dasharray="4,3" opacity="0.6"/>`;
+    }
+
+    // Axis labels
+    svg += `<text x="${pad - 4}" y="14" fill="var(--accent)" font-size="9" text-anchor="end">c/s</text>`;
+    svg += `<text x="${w - pad + 4}" y="14" fill="var(--yellow)" font-size="9" opacity="0.6">ms</text>`;
+    svg += '</svg>';
+    svg += '<div style="font-size:0.7rem;color:#484f58;">Blue solid = throughput (c/s). Yellow dashed = total time (ms).</div>';
+
+    el.innerHTML = svg;
   })();
 
   // History

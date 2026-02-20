@@ -382,8 +382,82 @@ fn main() {
             }
         }
 
+        // Append to JSONL history for temporal tracking (R1)
+        append_history(&updates, &current_stvs, json_path, dataset_id);
+
         println!();
         println!("To apply these updates, re-run with --apply flag (not yet implemented).");
         println!("Manual review recommended before modifying the ledger.");
     }
+}
+
+/// Append hypothesis updates to JSONL history file for temporal tracking.
+fn append_history(
+    updates: &[HypothesisUpdate],
+    current_stvs: &[(String, Stv)],
+    source_path: &str,
+    dataset_id: &str,
+) {
+    use std::io::Write;
+
+    let dir = "out/ledger_history";
+    fs::create_dir_all(dir).ok();
+    let path = format!("{}/updates.jsonl", dir);
+
+    let git_sha = std::process::Command::new("git")
+        .args(["rev-parse", "--short", "HEAD"])
+        .output()
+        .ok()
+        .and_then(|o| String::from_utf8(o.stdout).ok())
+        .map(|s| s.trim().to_string())
+        .unwrap_or_else(|| "unknown".into());
+
+    let ts = chrono::Utc::now().to_rfc3339();
+
+    let mut file = match fs::OpenOptions::new().create(true).append(true).open(&path) {
+        Ok(f) => f,
+        Err(e) => {
+            eprintln!("Could not open {}: {}", path, e);
+            return;
+        }
+    };
+
+    for u in updates {
+        let old_stv = current_stvs
+            .iter()
+            .find(|(id, _)| *id == u.id)
+            .map(|(_, stv)| stv.clone());
+
+        let (old_s, old_c) = old_stv
+            .as_ref()
+            .map(|s| (s.strength, s.confidence))
+            .unwrap_or((0.5, 0.0));
+
+        let new = old_stv
+            .as_ref()
+            .unwrap_or(&Stv {
+                strength: 0.5,
+                confidence: 0.0,
+            })
+            .update(u.observation_strength, u.evidence_weight);
+
+        let entry = serde_json::json!({
+            "ts": ts,
+            "git_sha": git_sha,
+            "hypothesis_id": u.id,
+            "old_stv": [old_s, old_c],
+            "new_stv": [new.strength, new.confidence],
+            "dataset": dataset_id,
+            "source": source_path,
+            "observation": u.observation,
+            "supports": u.supports,
+            "weight": u.evidence_weight,
+        });
+
+        if let Err(e) = writeln!(file, "{}", entry) {
+            eprintln!("Failed to write history entry: {}", e);
+        }
+    }
+
+    println!("  History appended to {}", path);
 }
