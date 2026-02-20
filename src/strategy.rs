@@ -193,6 +193,114 @@ mod tests {
         assert_eq!(realized, 0.0);
         assert!((p.cash - 89.0).abs() < 1e-9);
     }
+
+    // ======================================================================
+    // Algebraic invariant tests for apply_fill
+    // ======================================================================
+
+    /// Invariant: equity = cash + position * price after every fill.
+    fn assert_equity_invariant(p: &PortfolioState, price: f64) {
+        let expected = p.cash + p.position * price;
+        assert!(
+            (p.equity - expected).abs() < 1e-6,
+            "EQUITY INVARIANT VIOLATED: equity={:.6}, cash+pos*price={:.6}",
+            p.equity, expected
+        );
+    }
+
+    #[test]
+    fn invariant_equity_after_buy() {
+        let mut p = PortfolioState { cash: 1000.0, position: 0.0, entry_price: 0.0, equity: 1000.0 };
+        p.apply_fill(Fill { price: 100.0, qty: 1.0, fee: 0.1, ts: 0 });
+        assert_equity_invariant(&p, 100.0);
+        assert_eq!(p.position, 1.0);
+        assert_eq!(p.entry_price, 100.0);
+    }
+
+    #[test]
+    fn invariant_equity_after_sell() {
+        let mut p = PortfolioState { cash: 1000.0, position: 0.0, entry_price: 0.0, equity: 1000.0 };
+        p.apply_fill(Fill { price: 100.0, qty: -1.0, fee: 0.1, ts: 0 });
+        assert_equity_invariant(&p, 100.0);
+        assert_eq!(p.position, -1.0);
+    }
+
+    #[test]
+    fn invariant_equity_after_close_long() {
+        let mut p = PortfolioState { cash: 900.0, position: 1.0, entry_price: 100.0, equity: 1000.0 };
+        let realized = p.apply_fill(Fill { price: 110.0, qty: -1.0, fee: 0.1, ts: 0 });
+        assert_equity_invariant(&p, 110.0);
+        assert_eq!(p.position, 0.0);
+        // Closing long at 110 from entry 100: realized = (110-100)*1*1 = 10
+        assert!((realized - 10.0).abs() < 1e-9, "realized={}", realized);
+    }
+
+    #[test]
+    fn invariant_equity_after_close_short() {
+        let mut p = PortfolioState { cash: 1100.0, position: -1.0, entry_price: 100.0, equity: 1000.0 };
+        let realized = p.apply_fill(Fill { price: 90.0, qty: 1.0, fee: 0.1, ts: 0 });
+        assert_equity_invariant(&p, 90.0);
+        assert_eq!(p.position, 0.0);
+        // Closing short at 90 from entry 100: realized = (90-100)*1*(-1) = 10
+        assert!((realized - 10.0).abs() < 1e-9, "realized={}", realized);
+    }
+
+    #[test]
+    fn invariant_equity_after_flip() {
+        let mut p = PortfolioState { cash: 900.0, position: 1.0, entry_price: 100.0, equity: 1000.0 };
+        let realized = p.apply_fill(Fill { price: 105.0, qty: -2.0, fee: 0.1, ts: 0 });
+        assert_equity_invariant(&p, 105.0);
+        assert_eq!(p.position, -1.0);
+        assert_eq!(p.entry_price, 105.0); // Flipped: new entry is fill price
+        // Realized from closing the long 1.0: (105-100)*1*1 = 5
+        assert!((realized - 5.0).abs() < 1e-9, "realized={}", realized);
+    }
+
+    #[test]
+    fn invariant_equity_after_add_to_position() {
+        let mut p = PortfolioState { cash: 900.0, position: 1.0, entry_price: 100.0, equity: 1000.0 };
+        p.apply_fill(Fill { price: 120.0, qty: 1.0, fee: 0.1, ts: 0 });
+        assert_equity_invariant(&p, 120.0);
+        assert_eq!(p.position, 2.0);
+        // Weighted average entry: (100*1 + 120*1) / 2 = 110
+        assert!((p.entry_price - 110.0).abs() < 1e-9, "entry_price={}", p.entry_price);
+    }
+
+    #[test]
+    fn invariant_equity_after_partial_reduce() {
+        let mut p = PortfolioState { cash: 800.0, position: 2.0, entry_price: 100.0, equity: 1000.0 };
+        let realized = p.apply_fill(Fill { price: 110.0, qty: -1.0, fee: 0.1, ts: 0 });
+        assert_equity_invariant(&p, 110.0);
+        assert_eq!(p.position, 1.0);
+        assert_eq!(p.entry_price, 100.0); // Entry unchanged on partial reduce
+        // Realized: (110-100)*1*1 = 10
+        assert!((realized - 10.0).abs() < 1e-9, "realized={}", realized);
+    }
+
+    #[test]
+    fn invariant_zero_fill_is_noop() {
+        let mut p = PortfolioState { cash: 1000.0, position: 1.0, entry_price: 100.0, equity: 1100.0 };
+        let realized = p.apply_fill(Fill { price: 200.0, qty: 0.0, fee: 0.0, ts: 0 });
+        assert_eq!(realized, 0.0);
+        assert_eq!(p.cash, 1000.0);
+        assert_eq!(p.position, 1.0);
+    }
+
+    /// Property: across many random-ish fill sequences, equity invariant never violated.
+    #[test]
+    fn invariant_equity_survives_sequence() {
+        let mut p = PortfolioState { cash: 10000.0, position: 0.0, entry_price: 0.0, equity: 10000.0 };
+        let fills = vec![
+            (100.0, 1.0), (105.0, 1.0), (110.0, -0.5), (95.0, -1.5),  // long, add, partial reduce, close+short
+            (90.0, 1.0),  // close short
+            (100.0, 2.0), (120.0, -3.0), // long 2, flip to short 1
+            (110.0, 1.0), // close short
+        ];
+        for (price, qty) in fills {
+            p.apply_fill(Fill { price, qty, fee: 0.01, ts: 0 });
+            assert_equity_invariant(&p, price);
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy)]
