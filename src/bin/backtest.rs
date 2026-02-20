@@ -3,6 +3,7 @@ use std::io::{BufRead, BufReader};
 
 use arbitragefx::backtest::{parse_csv_line, run_backtest};
 use arbitragefx::data::analyze_csv;
+use arbitragefx::regime::classify_dataset;
 use arbitragefx::state::Config;
 
 fn main() {
@@ -59,6 +60,14 @@ fn main() {
         eprintln!("no rows parsed");
         return;
     }
+    // Regime classification
+    let regime = classify_dataset(&rows);
+    println!("regime={} trend={} narrative_score={:.3} price_change={:.1}%",
+        regime.dominant_regime, regime.price_trend, regime.mean_narrative_score, regime.price_change_pct);
+    println!("regime_breakdown grounded={:.1}% uncertain={:.1}% narrative={:.1}% reflexive={:.1}%",
+        regime.grounded_frac * 100.0, regime.uncertain_frac * 100.0,
+        regime.narrative_frac * 100.0, regime.reflexive_frac * 100.0);
+
     let cfg = Config::from_env();
     match run_backtest(cfg, &rows) {
         Ok((pnl, dd)) => println!("pnl_total={:.4} max_drawdown={:.4}", pnl, dd),
