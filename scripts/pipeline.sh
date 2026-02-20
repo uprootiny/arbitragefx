@@ -92,8 +92,18 @@ if [ -f "$WF_DIR/report.json" ]; then
 fi
 echo "" | tee -a "$REPORT"
 
-# Step 5: Summary
-echo "--- Step 5: Summary ---" | tee -a "$REPORT"
+# Step 5: Bench profiling
+echo "--- Step 5: Bench Profiling ---" | tee -a "$REPORT"
+cargo run --release --bin bench 2>/dev/null | tee -a "$REPORT"
+echo "" | tee -a "$REPORT"
+
+# Step 6: Workbench dashboard
+echo "--- Step 6: Workbench Dashboard ---" | tee -a "$REPORT"
+cargo run --release --bin workbench 2>/dev/null | tee -a "$REPORT"
+echo "" | tee -a "$REPORT"
+
+# Step 7: Summary
+echo "--- Step 7: Summary ---" | tee -a "$REPORT"
 echo "  Report written to: $REPORT" | tee -a "$REPORT"
 echo "  Walk-forward JSON: $WF_DIR/${DATE}.json" | tee -a "$REPORT"
 echo "  Timestamp: $(date -Iseconds)" | tee -a "$REPORT"

@@ -25,6 +25,7 @@ jobs:
           mkdir -p _site
           # Copy styled HTML docs
           cp docs/index.html _site/ 2>/dev/null || true
+          cp docs/workbench.html _site/workbench.html 2>/dev/null || true
           # Generate index from markdown
           cat > _site/index.html << 'HTMLEOF'
           <!DOCTYPE html>
