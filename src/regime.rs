@@ -59,7 +59,11 @@ pub fn classify_dataset(rows: &[CsvRow]) -> RegimeSummary {
 
     for (i, row) in rows.iter().enumerate() {
         // Compute rolling volatility from high-low range
-        let candle_vol = if row.c > 0.0 { (row.h - row.l) / row.c } else { 0.0 };
+        let candle_vol = if row.c > 0.0 {
+            (row.h - row.l) / row.c
+        } else {
+            0.0
+        };
 
         funding_sum += row.funding;
         funding_sq_sum += row.funding * row.funding;
@@ -79,7 +83,11 @@ pub fn classify_dataset(rows: &[CsvRow]) -> RegimeSummary {
         let vol_mean = vol_sum / n;
         let vol_var = (vol_sq_sum / n - vol_mean * vol_mean).max(0.0);
         let vol_std = vol_var.sqrt().max(1e-9);
-        let volatility_ratio = if vol_mean > 0.0 { candle_vol / vol_mean } else { 1.0 };
+        let volatility_ratio = if vol_mean > 0.0 {
+            candle_vol / vol_mean
+        } else {
+            1.0
+        };
 
         // Compute OI change rate
         let oi_change_rate = if i > 0 && rows[i - 1].oi > 0.0 {
@@ -90,9 +98,16 @@ pub fn classify_dataset(rows: &[CsvRow]) -> RegimeSummary {
 
         // Volume ratio (current vs rolling mean)
         let volume_ratio = if i >= warmup {
-            let recent_vol: f64 = rows[i.saturating_sub(warmup)..i].iter().map(|r| r.v).sum::<f64>()
+            let recent_vol: f64 = rows[i.saturating_sub(warmup)..i]
+                .iter()
+                .map(|r| r.v)
+                .sum::<f64>()
                 / warmup as f64;
-            if recent_vol > 0.0 { row.v / recent_vol } else { 1.0 }
+            if recent_vol > 0.0 {
+                row.v / recent_vol
+            } else {
+                1.0
+            }
         } else {
             1.0
         };
@@ -103,7 +118,11 @@ pub fn classify_dataset(rows: &[CsvRow]) -> RegimeSummary {
         } else {
             0.0
         };
-        let pv_divergence = if volume_ratio < 0.5 { price_change.abs() } else { 0.0 };
+        let pv_divergence = if volume_ratio < 0.5 {
+            price_change.abs()
+        } else {
+            0.0
+        };
 
         let indicators = NarrativeIndicators {
             funding_rate: row.funding,
@@ -143,10 +162,26 @@ pub fn classify_dataset(rows: &[CsvRow]) -> RegimeSummary {
     let mean_score = scores.iter().sum::<f64>() / n;
     let mean_vol = vol_ratios.iter().sum::<f64>() / n;
 
-    let grounded = regimes.iter().filter(|r| **r == NarrativeRegime::Grounded).count() as f64 / n;
-    let uncertain = regimes.iter().filter(|r| **r == NarrativeRegime::Uncertain).count() as f64 / n;
-    let narrative = regimes.iter().filter(|r| **r == NarrativeRegime::NarrativeDriven).count() as f64 / n;
-    let reflexive = regimes.iter().filter(|r| **r == NarrativeRegime::Reflexive).count() as f64 / n;
+    let grounded = regimes
+        .iter()
+        .filter(|r| **r == NarrativeRegime::Grounded)
+        .count() as f64
+        / n;
+    let uncertain = regimes
+        .iter()
+        .filter(|r| **r == NarrativeRegime::Uncertain)
+        .count() as f64
+        / n;
+    let narrative = regimes
+        .iter()
+        .filter(|r| **r == NarrativeRegime::NarrativeDriven)
+        .count() as f64
+        / n;
+    let reflexive = regimes
+        .iter()
+        .filter(|r| **r == NarrativeRegime::Reflexive)
+        .count() as f64
+        / n;
 
     // Price trend
     let first_price = rows.first().map(|r| r.c).unwrap_or(0.0);
@@ -197,19 +232,23 @@ mod tests {
     use super::*;
 
     fn make_rows(prices: &[f64], funding: f64) -> Vec<CsvRow> {
-        prices.iter().enumerate().map(|(i, &c)| CsvRow {
-            ts: 1000 + i as u64 * 3600,
-            o: c * 0.99,
-            h: c * 1.01,
-            l: c * 0.98,
-            c,
-            v: 1000.0,
-            funding,
-            borrow: 0.0,
-            liq: 0.0,
-            depeg: 0.0,
-            oi: 50000.0,
-        }).collect()
+        prices
+            .iter()
+            .enumerate()
+            .map(|(i, &c)| CsvRow {
+                ts: 1000 + i as u64 * 3600,
+                o: c * 0.99,
+                h: c * 1.01,
+                l: c * 0.98,
+                c,
+                v: 1000.0,
+                funding,
+                borrow: 0.0,
+                liq: 0.0,
+                depeg: 0.0,
+                oi: 50000.0,
+            })
+            .collect()
     }
 
     #[test]
@@ -235,7 +274,9 @@ mod tests {
     #[test]
     fn test_classify_ranging() {
         // Oscillating around 100
-        let prices: Vec<f64> = (0..100).map(|i| 100.0 + (i as f64 * 0.1).sin() * 2.0).collect();
+        let prices: Vec<f64> = (0..100)
+            .map(|i| 100.0 + (i as f64 * 0.1).sin() * 2.0)
+            .collect();
         let rows = make_rows(&prices, 0.0);
         let summary = classify_dataset(&rows);
         assert_eq!(summary.price_trend, "ranging");
@@ -265,7 +306,8 @@ mod tests {
             return;
         }
         let content = std::fs::read_to_string(csv).unwrap();
-        let rows: Vec<CsvRow> = content.lines()
+        let rows: Vec<CsvRow> = content
+            .lines()
             .filter(|l| !l.starts_with("ts") && !l.starts_with('#') && !l.is_empty())
             .filter_map(|l| crate::backtest::parse_csv_line(l).ok())
             .collect();
@@ -273,6 +315,14 @@ mod tests {
         // Should classify as something meaningful
         assert_ne!(summary.dominant_regime, "insufficient_data");
         assert!(summary.mean_narrative_score >= 0.0 && summary.mean_narrative_score <= 1.0);
-        assert!((summary.grounded_frac + summary.uncertain_frac + summary.narrative_frac + summary.reflexive_frac - 1.0).abs() < 0.01);
+        assert!(
+            (summary.grounded_frac
+                + summary.uncertain_frac
+                + summary.narrative_frac
+                + summary.reflexive_frac
+                - 1.0)
+                .abs()
+                < 0.01
+        );
     }
 }

@@ -26,10 +26,22 @@ struct ExecConfig {
 impl ExecConfig {
     fn from_env() -> Self {
         Self {
-            slippage_k: std::env::var("SLIP_K").ok().and_then(|v| v.parse().ok()).unwrap_or(0.0008),
-            fee_rate: std::env::var("FEE_RATE").ok().and_then(|v| v.parse().ok()).unwrap_or(0.001),
-            latency_min: std::env::var("LAT_MIN").ok().and_then(|v| v.parse().ok()).unwrap_or(2),
-            latency_max: std::env::var("LAT_MAX").ok().and_then(|v| v.parse().ok()).unwrap_or(8),
+            slippage_k: std::env::var("SLIP_K")
+                .ok()
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(0.0008),
+            fee_rate: std::env::var("FEE_RATE")
+                .ok()
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(0.001),
+            latency_min: std::env::var("LAT_MIN")
+                .ok()
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(2),
+            latency_max: std::env::var("LAT_MAX")
+                .ok()
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(8),
         }
     }
 }
@@ -70,7 +82,9 @@ fn hold_for(kind: &EventType) -> u64 {
 }
 
 fn main() {
-    let path = std::env::args().nth(1).unwrap_or_else(|| "data.csv".to_string());
+    let path = std::env::args()
+        .nth(1)
+        .unwrap_or_else(|| "data.csv".to_string());
     let file = match File::open(&path) {
         Ok(f) => f,
         Err(err) => {
@@ -111,9 +125,27 @@ fn main() {
         for evt in events {
             let hold = hold_for(&evt.event);
             let dir = match evt.event {
-                EventType::FundingImbalance => if features.funding_rate > 0.0 { -1.0 } else { 1.0 },
-                EventType::LiquidationCascade => if features.price_velocity >= 0.0 { 1.0 } else { -1.0 },
-                EventType::StablecoinDepeg => if features.stable_depeg < 0.0 { 1.0 } else { -1.0 },
+                EventType::FundingImbalance => {
+                    if features.funding_rate > 0.0 {
+                        -1.0
+                    } else {
+                        1.0
+                    }
+                }
+                EventType::LiquidationCascade => {
+                    if features.price_velocity >= 0.0 {
+                        1.0
+                    } else {
+                        -1.0
+                    }
+                }
+                EventType::StablecoinDepeg => {
+                    if features.stable_depeg < 0.0 {
+                        1.0
+                    } else {
+                        -1.0
+                    }
+                }
             };
             let delay = latency_step(row.ts, exec.latency_min, exec.latency_max);
             let entry_ts = row.ts + delay;
@@ -144,7 +176,13 @@ fn main() {
             }
 
             let qty = trade.dir * 1.0;
-            let entry = slippage_price(trade.entry_price, qty, row.v, exec.slippage_k, features.vol_ratio);
+            let entry = slippage_price(
+                trade.entry_price,
+                qty,
+                row.v,
+                exec.slippage_k,
+                features.vol_ratio,
+            );
             let exit = slippage_price(row.c, -qty, row.v, exec.slippage_k, features.vol_ratio);
             let fee = (entry.abs() + exit.abs()) * exec.fee_rate;
             let pnl = (exit - entry) * qty - fee;

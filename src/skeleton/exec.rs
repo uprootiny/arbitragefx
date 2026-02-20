@@ -30,8 +30,16 @@ impl Execution for PaperExec {
                 qty: -qty,
                 fee: qty * price * self.fee_rate,
             },
-            Action::Close => Fill { price, qty: 0.0, fee: 0.0 },
-            Action::Hold => Fill { price, qty: 0.0, fee: 0.0 },
+            Action::Close => Fill {
+                price,
+                qty: 0.0,
+                fee: 0.0,
+            },
+            Action::Hold => Fill {
+                price,
+                qty: 0.0,
+                fee: 0.0,
+            },
         }
     }
 }

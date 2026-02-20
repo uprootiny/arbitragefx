@@ -14,7 +14,10 @@ impl Logger {
         dir.push(&run_id);
         create_dir_all(&dir)?;
         let file = File::create(dir.join("events.jsonl"))?;
-        Ok(Self { run_id, writer: BufWriter::new(file) })
+        Ok(Self {
+            run_id,
+            writer: BufWriter::new(file),
+        })
     }
 
     pub fn run_id(&self) -> &str {

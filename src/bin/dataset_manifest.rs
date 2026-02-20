@@ -37,7 +37,12 @@ fn main() {
         std::process::exit(2);
     }
 
-    let (manifest, report) = match analyze_csv(PathBuf::from(&path).as_path(), interval_secs, ttl_secs, now_ts) {
+    let (manifest, report) = match analyze_csv(
+        PathBuf::from(&path).as_path(),
+        interval_secs,
+        ttl_secs,
+        now_ts,
+    ) {
         Ok(m) => m,
         Err(err) => {
             eprintln!("analysis failed: {}", err);

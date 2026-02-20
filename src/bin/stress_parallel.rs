@@ -47,20 +47,28 @@ fn run_backtest(rows: &[CsvRow], cfg: &Config) -> u64 {
 
     for row in rows {
         let candle = arbitragefx::exchange::Candle {
-            ts: row.ts, o: row.o, h: row.h, l: row.l, c: row.c, v: row.v,
+            ts: row.ts,
+            o: row.o,
+            h: row.h,
+            l: row.l,
+            c: row.c,
+            v: row.v,
         };
         market.on_candle(candle);
-        market.update_aux(&cfg.symbol, MarketAux {
-            funding_rate: row.funding,
-            borrow_rate: row.borrow,
-            liquidation_score: row.liq,
-            stable_depeg: row.depeg,
-            fetch_ts: row.ts,
-            has_funding: true,
-            has_borrow: true,
-            has_liquidations: true,
-            has_depeg: false,
-        });
+        market.update_aux(
+            &cfg.symbol,
+            MarketAux {
+                funding_rate: row.funding,
+                borrow_rate: row.borrow,
+                liquidation_score: row.liq,
+                stable_depeg: row.depeg,
+                fetch_ts: row.ts,
+                has_funding: true,
+                has_borrow: true,
+                has_liquidations: true,
+                has_depeg: false,
+            },
+        );
 
         for inst in strategies.iter_mut() {
             let view = market.view(&cfg.symbol);
@@ -71,13 +79,22 @@ fn run_backtest(rows: &[CsvRow], cfg: &Config) -> u64 {
                 Action::Hold => None,
                 Action::Close => {
                     let q = -inst.state.portfolio.position;
-                    if q.abs() > 1e-9 { Some((q, row.c)) } else { None }
+                    if q.abs() > 1e-9 {
+                        Some((q, row.c))
+                    } else {
+                        None
+                    }
                 }
                 Action::Buy { qty } => Some((qty, row.c)),
                 Action::Sell { qty } => Some((-qty.abs(), row.c)),
             } {
                 let fee = price * qty.abs() * 0.001;
-                inst.state.portfolio.apply_fill(Fill { price, qty, fee, ts: row.ts });
+                inst.state.portfolio.apply_fill(Fill {
+                    price,
+                    qty,
+                    fee,
+                    ts: row.ts,
+                });
                 trades += 1;
             }
             metrics.update_with_price(&mut inst.state, row.c);
@@ -113,8 +130,10 @@ fn main() {
     let start = Instant::now();
     let initial_mem = get_memory_mb();
 
-    println!("{:>10} {:>12} {:>12} {:>12} {:>10}",
-             "Iteration", "Time", "Trades", "Memory MB", "Bars/sec");
+    println!(
+        "{:>10} {:>12} {:>12} {:>12} {:>10}",
+        "Iteration", "Time", "Trades", "Memory MB", "Bars/sec"
+    );
     println!("{}", "-".repeat(60));
 
     for iter in 0..iterations {
@@ -145,17 +164,22 @@ fn main() {
         let bars_per_sec = bars_this_iter / iter_time.as_secs_f64();
 
         if iter % 10 == 9 || iter == 0 {
-            println!("{:>10} {:>12} {:>12} {:>12.1} {:>10.0}",
-                     iter + 1,
-                     format!("{:.2?}", iter_time),
-                     total_trades.load(Ordering::Relaxed),
-                     curr_mem,
-                     bars_per_sec);
+            println!(
+                "{:>10} {:>12} {:>12} {:>12.1} {:>10.0}",
+                iter + 1,
+                format!("{:.2?}", iter_time),
+                total_trades.load(Ordering::Relaxed),
+                curr_mem,
+                bars_per_sec
+            );
         }
 
         // Memory check
         if curr_mem > 500.0 {
-            println!("\n⚠️  Memory > 500MB at iteration {}, investigating...", iter + 1);
+            println!(
+                "\n⚠️  Memory > 500MB at iteration {}, investigating...",
+                iter + 1
+            );
             // Force GC by dropping any cached data
             thread::sleep(Duration::from_millis(100));
             let after_gc = get_memory_mb();
@@ -172,17 +196,32 @@ fn main() {
 
     println!("\n=== Summary ===");
     println!("Total time: {:.2?}", total_time);
-    println!("Total bars processed: {}", total_bars.load(Ordering::Relaxed));
-    println!("Total trades executed: {}", total_trades.load(Ordering::Relaxed));
-    println!("Overall throughput: {:.0} bars/sec",
-             total_bars.load(Ordering::Relaxed) as f64 / total_time.as_secs_f64());
-    println!("Memory: {:.1} MB initial → {:.1} MB final (Δ {:.1} MB)",
-             initial_mem, final_mem, final_mem - initial_mem);
+    println!(
+        "Total bars processed: {}",
+        total_bars.load(Ordering::Relaxed)
+    );
+    println!(
+        "Total trades executed: {}",
+        total_trades.load(Ordering::Relaxed)
+    );
+    println!(
+        "Overall throughput: {:.0} bars/sec",
+        total_bars.load(Ordering::Relaxed) as f64 / total_time.as_secs_f64()
+    );
+    println!(
+        "Memory: {:.1} MB initial → {:.1} MB final (Δ {:.1} MB)",
+        initial_mem,
+        final_mem,
+        final_mem - initial_mem
+    );
 
     if final_mem - initial_mem < 50.0 {
         println!("\n✓ No significant memory leak detected");
     } else {
-        println!("\n⚠️  Memory grew by {:.1} MB - investigate", final_mem - initial_mem);
+        println!(
+            "\n⚠️  Memory grew by {:.1} MB - investigate",
+            final_mem - initial_mem
+        );
     }
 
     println!("\n✓ Parallel stress test complete");

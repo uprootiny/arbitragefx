@@ -94,7 +94,11 @@ fn run_backtest(rows: &[CsvRow], cfg: &Config) -> (f64, f64, u64, u64) {
                 Action::Hold => None,
                 Action::Close => {
                     let qty = -inst.state.portfolio.position;
-                    if qty.abs() > 1e-9 { Some((qty, row.c)) } else { None }
+                    if qty.abs() > 1e-9 {
+                        Some((qty, row.c))
+                    } else {
+                        None
+                    }
                 }
                 Action::Buy { qty } => Some((qty, row.c)),
                 Action::Sell { qty } => Some((-qty.abs(), row.c)),
@@ -117,7 +121,10 @@ fn run_backtest(rows: &[CsvRow], cfg: &Config) -> (f64, f64, u64, u64) {
     }
 
     let total_pnl: f64 = strategies.iter().map(|s| s.state.metrics.pnl).sum();
-    let max_dd: f64 = strategies.iter().map(|s| s.state.metrics.max_drawdown).fold(0.0, f64::min);
+    let max_dd: f64 = strategies
+        .iter()
+        .map(|s| s.state.metrics.max_drawdown)
+        .fold(0.0, f64::min);
     let n_strategies = strategies.len() as u64;
 
     (total_pnl, max_dd, total_trades, n_strategies)
@@ -155,19 +162,13 @@ fn main() {
 
     // Progressive load sizes
     let sizes = [
-        100,
-        500,
-        1_000,
-        5_000,
-        10_000,
-        50_000,
-        100_000,
-        500_000,
-        1_000_000,
+        100, 500, 1_000, 5_000, 10_000, 50_000, 100_000, 500_000, 1_000_000,
     ];
 
-    println!("{:>10} {:>12} {:>12} {:>10} {:>10} {:>12} {:>10}",
-             "Bars", "Gen Time", "Run Time", "Trades", "PnL", "Memory", "Bars/sec");
+    println!(
+        "{:>10} {:>12} {:>12} {:>10} {:>10} {:>12} {:>10}",
+        "Bars", "Gen Time", "Run Time", "Trades", "PnL", "Memory", "Bars/sec"
+    );
     println!("{}", "-".repeat(88));
 
     let mut prev_mem = get_memory_usage();
@@ -194,14 +195,16 @@ fn main() {
             0.0
         };
 
-        println!("{:>10} {:>12} {:>12} {:>10} {:>10.2} {:>12} {:>10.0}",
-                 n_bars,
-                 format!("{:.2?}", gen_time),
-                 format!("{:.2?}", run_time),
-                 trades,
-                 pnl,
-                 format_bytes(mem_delta),
-                 bars_per_sec);
+        println!(
+            "{:>10} {:>12} {:>12} {:>10} {:>10.2} {:>12} {:>10.0}",
+            n_bars,
+            format!("{:.2?}", gen_time),
+            format!("{:.2?}", run_time),
+            trades,
+            pnl,
+            format_bytes(mem_delta),
+            bars_per_sec
+        );
 
         prev_mem = curr_mem;
 
@@ -231,15 +234,22 @@ fn main() {
         if i % 20 == 19 {
             let elapsed = start.elapsed();
             let rate = (i + 1) as f64 / elapsed.as_secs_f64();
-            println!("  Iteration {}: {:.1} runs/sec, {} total trades",
-                     i + 1, rate, total_trades);
+            println!(
+                "  Iteration {}: {:.1} runs/sec, {} total trades",
+                i + 1,
+                rate,
+                total_trades
+            );
         }
     }
 
     let total_time = start.elapsed();
     println!("\nCompleted 100 iterations in {:.2?}", total_time);
     println!("Average: {:.2?} per iteration", total_time / 100);
-    println!("Throughput: {:.0} bars/sec overall", 100_000.0 / total_time.as_secs_f64());
+    println!(
+        "Throughput: {:.0} bars/sec overall",
+        100_000.0 / total_time.as_secs_f64()
+    );
 
     println!("\n✓ Stress test complete - no OOM or crashes");
 }

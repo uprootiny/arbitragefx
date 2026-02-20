@@ -7,7 +7,6 @@
 //!
 //! Run `BacktestIntegrity::check_all()` before trusting any backtest result.
 
-
 /// Backtest integrity checker
 pub struct BacktestIntegrity {
     violations: Vec<TrapViolation>,
@@ -37,7 +36,9 @@ pub enum Severity {
 
 impl BacktestIntegrity {
     pub fn new() -> Self {
-        Self { violations: Vec::new() }
+        Self {
+            violations: Vec::new(),
+        }
     }
 
     /// Add a violation
@@ -47,7 +48,10 @@ impl BacktestIntegrity {
 
     /// Check if backtest can be trusted
     pub fn is_trustworthy(&self) -> bool {
-        !self.violations.iter().any(|v| v.severity == Severity::Critical)
+        !self
+            .violations
+            .iter()
+            .any(|v| v.severity == Severity::Critical)
     }
 
     /// Get all violations
@@ -60,17 +64,33 @@ impl BacktestIntegrity {
         let mut out = String::new();
         out.push_str("=== BACKTEST INTEGRITY REPORT ===\n\n");
 
-        let critical = self.violations.iter().filter(|v| v.severity == Severity::Critical).count();
-        let high = self.violations.iter().filter(|v| v.severity == Severity::High).count();
+        let critical = self
+            .violations
+            .iter()
+            .filter(|v| v.severity == Severity::Critical)
+            .count();
+        let high = self
+            .violations
+            .iter()
+            .filter(|v| v.severity == Severity::High)
+            .count();
 
         out.push_str(&format!("Critical violations: {}\n", critical));
         out.push_str(&format!("High violations: {}\n", high));
-        out.push_str(&format!("Trustworthy: {}\n\n", if self.is_trustworthy() { "YES" } else { "NO" }));
+        out.push_str(&format!(
+            "Trustworthy: {}\n\n",
+            if self.is_trustworthy() { "YES" } else { "NO" }
+        ));
 
         for v in &self.violations {
             out.push_str(&format!(
                 "[{:?}] Trap #{}: {}\n  Module: {}\n  Issue: {}\n  Guard: {}\n\n",
-                v.severity, v.trap_id, v.trap_name, v.module_location, v.description, v.guard_recommendation
+                v.severity,
+                v.trap_id,
+                v.trap_name,
+                v.module_location,
+                v.description,
+                v.guard_recommendation
             ));
         }
 
@@ -145,7 +165,11 @@ pub mod trap_02_warmup_pollution {
     };
 
     /// Check warm-up requirements
-    pub fn check(candle_count: u64, ema_slow_period: u64, variance_min: u64) -> Option<TrapViolation> {
+    pub fn check(
+        candle_count: u64,
+        ema_slow_period: u64,
+        variance_min: u64,
+    ) -> Option<TrapViolation> {
         let required = ema_slow_period.max(variance_min);
         if candle_count < required {
             Some(TrapViolation {
@@ -216,7 +240,8 @@ pub mod trap_04_fixed_slippage {
         name: "Fixed fee/slippage model",
         severity: Severity::Medium,
         module: "src/bin/engine_backtest.rs:116-121",
-        guard: "slippage = base_slippage * (1 + volatility_multiplier * current_vol / baseline_vol)",
+        guard:
+            "slippage = base_slippage * (1 + volatility_multiplier * current_vol / baseline_vol)",
     };
 
     /// Calculate volatility-adjusted slippage
@@ -245,7 +270,8 @@ pub mod trap_05_perfect_fill {
         name: "Perfect fill assumption",
         severity: Severity::High,
         module: "src/bin/engine_backtest.rs:123-133, fuzz.rs",
-        guard: "Simulate partial fills, timeouts, and adverse selection. Hook fuzz.rs into backtest.",
+        guard:
+            "Simulate partial fills, timeouts, and adverse selection. Hook fuzz.rs into backtest.",
     };
 }
 
@@ -287,14 +313,21 @@ pub mod trap_07_event_order {
     };
 
     /// Scramble events within a time window
-    pub fn scramble_events<T: Clone>(events: &[(u64, T)], window_ms: u64, seed: u64) -> Vec<(u64, T)> {
+    pub fn scramble_events<T: Clone>(
+        events: &[(u64, T)],
+        window_ms: u64,
+        seed: u64,
+    ) -> Vec<(u64, T)> {
         use std::collections::BTreeMap;
 
         // Group by window
         let mut windows: BTreeMap<u64, Vec<(u64, T)>> = BTreeMap::new();
         for (ts, event) in events {
             let window_key = ts / window_ms;
-            windows.entry(window_key).or_default().push((*ts, event.clone()));
+            windows
+                .entry(window_key)
+                .or_default()
+                .push((*ts, event.clone()));
         }
 
         // Shuffle within each window using simple LCG
@@ -452,7 +485,8 @@ pub mod trap_13_tail_risk_hidden {
         name: "Metrics that hide tail risk",
         severity: Severity::High,
         module: "src/backtest.rs, src/engine/backtest_ethics.rs",
-        guard: "Primary metrics: max_drawdown, CVaR, worst_day, underwater_time. Sharpe is secondary.",
+        guard:
+            "Primary metrics: max_drawdown, CVaR, worst_day, underwater_time. Sharpe is secondary.",
     };
 
     /// Required primary metrics (must be reported)
@@ -548,7 +582,10 @@ pub mod trap_16_wal_determinism {
     };
 
     /// Verify replay determinism
-    pub fn verify_replay_determinism(original_hash: u64, replayed_hash: u64) -> Option<TrapViolation> {
+    pub fn verify_replay_determinism(
+        original_hash: u64,
+        replayed_hash: u64,
+    ) -> Option<TrapViolation> {
         if original_hash != replayed_hash {
             Some(TrapViolation {
                 trap_id: TRAP.id,

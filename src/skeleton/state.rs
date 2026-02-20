@@ -20,7 +20,14 @@ pub struct MarketState {
 impl MarketState {
     pub fn new(window_size: usize) -> Self {
         Self {
-            last: Candle { ts: 0, o: 0.0, h: 0.0, l: 0.0, c: 0.0, v: 0.0 },
+            last: Candle {
+                ts: 0,
+                o: 0.0,
+                h: 0.0,
+                l: 0.0,
+                c: 0.0,
+                v: 0.0,
+            },
             window: VecDeque::with_capacity(window_size),
             window_size,
         }
@@ -45,7 +52,12 @@ pub struct Portfolio {
 
 impl Portfolio {
     pub fn new(cash: f64) -> Self {
-        Self { cash, position: 0.0, entry_price: 0.0, equity: cash }
+        Self {
+            cash,
+            position: 0.0,
+            entry_price: 0.0,
+            equity: cash,
+        }
     }
 
     pub fn apply_fill(&mut self, price: f64, qty: f64, fee: f64) {
@@ -57,8 +69,7 @@ impl Portfolio {
         if prev_pos == 0.0 || (prev_pos > 0.0) == (new_pos > 0.0) {
             let total = prev_pos.abs() + qty.abs();
             if total > 0.0 {
-                self.entry_price =
-                    (self.entry_price * prev_pos.abs() + price * qty.abs()) / total;
+                self.entry_price = (self.entry_price * prev_pos.abs() + price * qty.abs()) / total;
             }
         } else if new_pos != 0.0 {
             self.entry_price = price;
@@ -96,7 +107,10 @@ impl EngineState {
         Self {
             market: MarketState::new(window_size),
             portfolio: Portfolio::new(cash),
-            risk: RiskState { halted: false, last_trade_ts: 0 },
+            risk: RiskState {
+                halted: false,
+                last_trade_ts: 0,
+            },
             strategy: StrategyState { last_signal_ts: 0 },
         }
     }

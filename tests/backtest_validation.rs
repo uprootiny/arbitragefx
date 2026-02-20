@@ -14,8 +14,8 @@
 //!   8. Drawdown invariant      -- max_drawdown <= 1.0
 
 use arbitragefx::backtest::{
-    calc_fill_probability, calc_slippage, CsvRow, ExecConfig, ExecMode, parse_csv_line,
-    run_backtest,
+    calc_fill_probability, calc_slippage, parse_csv_line, run_backtest, CsvRow, ExecConfig,
+    ExecMode,
 };
 use arbitragefx::state::Config;
 
@@ -139,7 +139,10 @@ fn single_row_does_not_panic() {
     let rows = make_synthetic_rows(1, 30_000.0, 0.0);
     let cfg = test_config();
     let result = run_backtest(cfg, &rows);
-    assert!(result.is_ok(), "Single-row backtest should not panic or error");
+    assert!(
+        result.is_ok(),
+        "Single-row backtest should not panic or error"
+    );
 }
 
 // ===========================================================================
@@ -281,9 +284,7 @@ fn fill_probability_always_in_unit_interval() {
                 for &base in &base_probs {
                     for &adv in &adverse_sels {
                         for is_buy in [true, false] {
-                            let prob = calc_fill_probability(
-                                is_buy, limit, price, vol, base, adv,
-                            );
+                            let prob = calc_fill_probability(is_buy, limit, price, vol, base, adv);
                             assert!(
                                 (0.0..=1.0).contains(&prob),
                                 "Fill prob out of [0,1]: {} (buy={}, limit={}, price={}, vol={}, base={}, adv={})",
@@ -415,7 +416,10 @@ fn exec_config_instant_valid() {
     let cfg = ExecConfig::instant();
     assert_exec_config_valid(&cfg, "instant");
     assert_eq!(cfg.mode, ExecMode::Instant);
-    assert!((cfg.fee_rate).abs() < 1e-12, "instant should have zero fees");
+    assert!(
+        (cfg.fee_rate).abs() < 1e-12,
+        "instant should have zero fees"
+    );
     assert!(
         (cfg.slippage_k).abs() < 1e-12,
         "instant should have zero slippage"
@@ -517,9 +521,5 @@ fn max_drawdown_non_negative() {
     let rows = make_synthetic_rows(100, 30_000.0, 3.0);
     let cfg = test_config();
     let (_pnl, dd) = run_backtest(cfg, &rows).expect("backtest failed");
-    assert!(
-        dd >= 0.0,
-        "Max drawdown should be non-negative, got {}",
-        dd
-    );
+    assert!(dd >= 0.0, "Max drawdown should be non-negative, got {}", dd);
 }

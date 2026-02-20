@@ -26,7 +26,7 @@ struct Hypothesis {
     stop_loss: f64,
     take_profit: f64,
     // Execution parameters
-    position_size: f64,  // Base qty per trade
+    position_size: f64, // Base qty per trade
     fee_rate: f64,
     slippage_k: f64,
 }
@@ -52,37 +52,124 @@ impl Hypothesis {
         vec![
             // Baseline
             Self::baseline(),
-
             // === POSITION SIZING ===
-            Self { name: "pos_tiny", position_size: 0.0005, ..Self::baseline() },
-            Self { name: "pos_small", position_size: 0.002, ..Self::baseline() },
-            Self { name: "pos_medium", position_size: 0.005, ..Self::baseline() },
-            Self { name: "pos_large", position_size: 0.01, ..Self::baseline() },
-
+            Self {
+                name: "pos_tiny",
+                position_size: 0.0005,
+                ..Self::baseline()
+            },
+            Self {
+                name: "pos_small",
+                position_size: 0.002,
+                ..Self::baseline()
+            },
+            Self {
+                name: "pos_medium",
+                position_size: 0.005,
+                ..Self::baseline()
+            },
+            Self {
+                name: "pos_large",
+                position_size: 0.01,
+                ..Self::baseline()
+            },
             // === STOP/PROFIT LEVELS ===
-            Self { name: "stop_tight", stop_loss: 0.002, take_profit: 0.003, ..Self::baseline() },
-            Self { name: "stop_balanced", stop_loss: 0.004, take_profit: 0.006, ..Self::baseline() },
-            Self { name: "stop_wide", stop_loss: 0.008, take_profit: 0.012, ..Self::baseline() },
-            Self { name: "stop_asym_up", stop_loss: 0.003, take_profit: 0.009, ..Self::baseline() },  // 3:1 reward
-            Self { name: "stop_asym_dn", stop_loss: 0.006, take_profit: 0.004, ..Self::baseline() },  // quick profit
-
+            Self {
+                name: "stop_tight",
+                stop_loss: 0.002,
+                take_profit: 0.003,
+                ..Self::baseline()
+            },
+            Self {
+                name: "stop_balanced",
+                stop_loss: 0.004,
+                take_profit: 0.006,
+                ..Self::baseline()
+            },
+            Self {
+                name: "stop_wide",
+                stop_loss: 0.008,
+                take_profit: 0.012,
+                ..Self::baseline()
+            },
+            Self {
+                name: "stop_asym_up",
+                stop_loss: 0.003,
+                take_profit: 0.009,
+                ..Self::baseline()
+            }, // 3:1 reward
+            Self {
+                name: "stop_asym_dn",
+                stop_loss: 0.006,
+                take_profit: 0.004,
+                ..Self::baseline()
+            }, // quick profit
             // === ENTRY SELECTIVITY ===
-            Self { name: "entry_loose", entry_threshold: 0.8, edge_hurdle: 0.001, ..Self::baseline() },
-            Self { name: "entry_normal", entry_threshold: 1.2, edge_hurdle: 0.003, ..Self::baseline() },
-            Self { name: "entry_strict", entry_threshold: 1.8, edge_hurdle: 0.005, ..Self::baseline() },
-            Self { name: "entry_vstrict", entry_threshold: 2.5, edge_hurdle: 0.008, ..Self::baseline() },
-
+            Self {
+                name: "entry_loose",
+                entry_threshold: 0.8,
+                edge_hurdle: 0.001,
+                ..Self::baseline()
+            },
+            Self {
+                name: "entry_normal",
+                entry_threshold: 1.2,
+                edge_hurdle: 0.003,
+                ..Self::baseline()
+            },
+            Self {
+                name: "entry_strict",
+                entry_threshold: 1.8,
+                edge_hurdle: 0.005,
+                ..Self::baseline()
+            },
+            Self {
+                name: "entry_vstrict",
+                entry_threshold: 2.5,
+                edge_hurdle: 0.008,
+                ..Self::baseline()
+            },
             // === EXIT TIMING ===
-            Self { name: "exit_quick", exit_threshold: 0.2, ..Self::baseline() },
-            Self { name: "exit_patient", exit_threshold: 0.6, ..Self::baseline() },
-            Self { name: "exit_vpatient", exit_threshold: 0.8, ..Self::baseline() },
-
+            Self {
+                name: "exit_quick",
+                exit_threshold: 0.2,
+                ..Self::baseline()
+            },
+            Self {
+                name: "exit_patient",
+                exit_threshold: 0.6,
+                ..Self::baseline()
+            },
+            Self {
+                name: "exit_vpatient",
+                exit_threshold: 0.8,
+                ..Self::baseline()
+            },
             // === FEE SCENARIOS ===
-            Self { name: "fee_zero", fee_rate: 0.0, slippage_k: 0.0, ..Self::baseline() },
-            Self { name: "fee_maker", fee_rate: 0.0002, slippage_k: 0.0002, ..Self::baseline() },
-            Self { name: "fee_vip", fee_rate: 0.0004, slippage_k: 0.0004, ..Self::baseline() },
-            Self { name: "fee_taker", fee_rate: 0.001, slippage_k: 0.0008, ..Self::baseline() },
-
+            Self {
+                name: "fee_zero",
+                fee_rate: 0.0,
+                slippage_k: 0.0,
+                ..Self::baseline()
+            },
+            Self {
+                name: "fee_maker",
+                fee_rate: 0.0002,
+                slippage_k: 0.0002,
+                ..Self::baseline()
+            },
+            Self {
+                name: "fee_vip",
+                fee_rate: 0.0004,
+                slippage_k: 0.0004,
+                ..Self::baseline()
+            },
+            Self {
+                name: "fee_taker",
+                fee_rate: 0.001,
+                slippage_k: 0.0008,
+                ..Self::baseline()
+            },
             // === COMBINED OPTIMIZED ===
             // Maker fees + strict entry + balanced stops
             Self {
@@ -117,7 +204,7 @@ impl Hypothesis {
                 exit_threshold: 0.5,
                 edge_hurdle: 0.006,
                 stop_loss: 0.003,
-                take_profit: 0.012,  // 4:1 reward
+                take_profit: 0.012, // 4:1 reward
                 position_size: 0.002,
                 fee_rate: 0.0,
                 slippage_k: 0.0,
@@ -136,7 +223,6 @@ impl Hypothesis {
                 slippage_k: 0.0008,
                 ..Self::baseline()
             },
-
             // === TIMEFRAME-SPECIFIC ===
             // For longer timeframes (15m, 1h): very selective, wider stops
             Self {
@@ -188,12 +274,27 @@ impl Hypothesis {
                 slippage_k: 0.0008,
                 ..Self::baseline()
             },
-
             // === EDGE HURDLE TESTS ===
-            Self { name: "edge_low", edge_hurdle: 0.001, ..Self::baseline() },
-            Self { name: "edge_mid", edge_hurdle: 0.004, ..Self::baseline() },
-            Self { name: "edge_high", edge_hurdle: 0.008, ..Self::baseline() },
-            Self { name: "edge_vhigh", edge_hurdle: 0.012, ..Self::baseline() },
+            Self {
+                name: "edge_low",
+                edge_hurdle: 0.001,
+                ..Self::baseline()
+            },
+            Self {
+                name: "edge_mid",
+                edge_hurdle: 0.004,
+                ..Self::baseline()
+            },
+            Self {
+                name: "edge_high",
+                edge_hurdle: 0.008,
+                ..Self::baseline()
+            },
+            Self {
+                name: "edge_vhigh",
+                edge_hurdle: 0.012,
+                ..Self::baseline()
+            },
         ]
     }
 }
@@ -266,7 +367,11 @@ fn run_hypothesis(h: &Hypothesis, rows: &[CsvRow]) -> TrialResult {
                 Action::Hold => None,
                 Action::Close => {
                     let qty = -inst.state.portfolio.position;
-                    if qty.abs() > 1e-9 { Some((qty, row.c)) } else { None }
+                    if qty.abs() > 1e-9 {
+                        Some((qty, row.c))
+                    } else {
+                        None
+                    }
                 }
                 Action::Buy { qty: _ } => Some((h.position_size, row.c)),
                 Action::Sell { qty: _ } => Some((-h.position_size, row.c)),
@@ -282,7 +387,7 @@ fn run_hypothesis(h: &Hypothesis, rows: &[CsvRow]) -> TrialResult {
                 let is_buy = qty > 0.0;
 
                 // Base fill probability adjusted by volatility and adverse selection
-                let base_prob = if h.fee_rate < 0.0005 { 0.7 } else { 0.95 };  // Limit vs market
+                let base_prob = if h.fee_rate < 0.0005 { 0.7 } else { 0.95 }; // Limit vs market
                 let adverse_sel = 0.25;
                 let fill_prob = base_prob * (1.0 - adverse_sel * volatility * 10.0).max(0.3);
 
@@ -295,7 +400,11 @@ fn run_hypothesis(h: &Hypothesis, rows: &[CsvRow]) -> TrialResult {
                 // Apply slippage (higher in volatile markets)
                 let vol_mult = 1.0 + volatility * 2.0;
                 let slip = h.slippage_k * qty.abs() / row.v.max(1.0) * vol_mult;
-                let fill_price = if is_buy { price * (1.0 + slip) } else { price * (1.0 - slip) };
+                let fill_price = if is_buy {
+                    price * (1.0 + slip)
+                } else {
+                    price * (1.0 - slip)
+                };
                 let fee = fill_price * qty.abs() * h.fee_rate;
                 let slip_cost = (fill_price - price).abs() * qty.abs();
                 friction += fee + slip_cost;
@@ -340,8 +449,15 @@ fn run_hypothesis(h: &Hypothesis, rows: &[CsvRow]) -> TrialResult {
 
     let n_strategies = strategies.len() as f64;
     let pnl: f64 = strategies.iter().map(|s| s.state.metrics.pnl).sum::<f64>() / n_strategies;
-    let equity_delta: f64 = strategies.iter().map(|s| s.state.portfolio.equity - initial_cash).sum::<f64>() / n_strategies;
-    let max_dd = strategies.iter().map(|s| s.state.metrics.max_drawdown).fold(0.0, f64::min);
+    let equity_delta: f64 = strategies
+        .iter()
+        .map(|s| s.state.portfolio.equity - initial_cash)
+        .sum::<f64>()
+        / n_strategies;
+    let max_dd = strategies
+        .iter()
+        .map(|s| s.state.metrics.max_drawdown)
+        .fold(0.0, f64::min);
     let wins: u64 = strategies.iter().map(|s| s.state.metrics.wins).sum();
     let losses: u64 = strategies.iter().map(|s| s.state.metrics.losses).sum();
 
@@ -359,7 +475,9 @@ fn run_hypothesis(h: &Hypothesis, rows: &[CsvRow]) -> TrialResult {
 }
 
 fn main() {
-    let path = std::env::args().nth(1).unwrap_or_else(|| "data/btc_binance.csv".to_string());
+    let path = std::env::args()
+        .nth(1)
+        .unwrap_or_else(|| "data/btc_binance.csv".to_string());
 
     println!("Loading data from {}...", path);
     let file = match File::open(&path) {
@@ -372,7 +490,8 @@ fn main() {
 
     let mut rows = Vec::new();
     for line in BufReader::new(file).lines().flatten() {
-        if line.trim().is_empty() || line.starts_with('#') || line.to_lowercase().starts_with("ts,") {
+        if line.trim().is_empty() || line.starts_with('#') || line.to_lowercase().starts_with("ts,")
+        {
             continue;
         }
         match parse_csv_line(&line) {
@@ -391,7 +510,10 @@ fn main() {
     let buy_hold = last_price - first_price;
 
     println!("Loaded {} bars", rows.len());
-    println!("Price range: {:.2} -> {:.2} (buy-hold: {:.2})", first_price, last_price, buy_hold);
+    println!(
+        "Price range: {:.2} -> {:.2} (buy-hold: {:.2})",
+        first_price, last_price, buy_hold
+    );
     println!();
 
     let hypotheses = Hypothesis::variants();
@@ -407,19 +529,41 @@ fn main() {
     results.sort_by(|a, b| b.equity_delta.partial_cmp(&a.equity_delta).unwrap());
 
     // Print results table
-    println!("{:<20} {:>10} {:>12} {:>10} {:>8} {:>8} {:>10} {:>8}",
-             "Hypothesis", "PnL", "Equity Δ", "MaxDD", "Trades", "Win%", "Friction", "ms");
+    println!(
+        "{:<20} {:>10} {:>12} {:>10} {:>8} {:>8} {:>10} {:>8}",
+        "Hypothesis", "PnL", "Equity Δ", "MaxDD", "Trades", "Win%", "Friction", "ms"
+    );
     println!("{}", "-".repeat(96));
 
     for r in &results {
-        let win_pct = if r.trades > 0 { 100.0 * r.wins as f64 / r.trades as f64 } else { 0.0 };
-        println!("{:<20} {:>10.2} {:>12.2} {:>10.4} {:>8} {:>7.1}% {:>10.2} {:>8}",
-                 r.hypothesis, r.pnl, r.equity_delta, r.max_drawdown, r.trades, win_pct, r.friction, r.runtime_ms);
+        let win_pct = if r.trades > 0 {
+            100.0 * r.wins as f64 / r.trades as f64
+        } else {
+            0.0
+        };
+        println!(
+            "{:<20} {:>10.2} {:>12.2} {:>10.4} {:>8} {:>7.1}% {:>10.2} {:>8}",
+            r.hypothesis,
+            r.pnl,
+            r.equity_delta,
+            r.max_drawdown,
+            r.trades,
+            win_pct,
+            r.friction,
+            r.runtime_ms
+        );
     }
 
     println!();
-    println!("Best: {} (equity Δ: {:.2})", results[0].hypothesis, results[0].equity_delta);
-    println!("Worst: {} (equity Δ: {:.2})", results.last().unwrap().hypothesis, results.last().unwrap().equity_delta);
+    println!(
+        "Best: {} (equity Δ: {:.2})",
+        results[0].hypothesis, results[0].equity_delta
+    );
+    println!(
+        "Worst: {} (equity Δ: {:.2})",
+        results.last().unwrap().hypothesis,
+        results.last().unwrap().equity_delta
+    );
 
     // Categorized analysis
     println!();
@@ -434,73 +578,123 @@ fn main() {
         println!("\nFRICTION IMPACT:");
         println!("  Zero fees: {:.2} equity", zero.equity_delta);
         println!("  Baseline:  {:.2} equity", base.equity_delta);
-        println!("  Impact:    {:.2} ({:.1}% drag)", friction_impact, 100.0 * friction_impact.abs() / zero.equity_delta.abs().max(0.01));
+        println!(
+            "  Impact:    {:.2} ({:.1}% drag)",
+            friction_impact,
+            100.0 * friction_impact.abs() / zero.equity_delta.abs().max(0.01)
+        );
     }
 
     if let Some(maker) = maker_fees {
         println!("\nMAKER vs TAKER:");
-        println!("  Maker fees: {:.2} equity, {:.1}% win", maker.equity_delta,
-                 if maker.trades > 0 { 100.0 * maker.wins as f64 / maker.trades as f64 } else { 0.0 });
+        println!(
+            "  Maker fees: {:.2} equity, {:.1}% win",
+            maker.equity_delta,
+            if maker.trades > 0 {
+                100.0 * maker.wins as f64 / maker.trades as f64
+            } else {
+                0.0
+            }
+        );
         if let Some(base) = baseline {
-            println!("  Taker fees: {:.2} equity, {:.1}% win", base.equity_delta,
-                     if base.trades > 0 { 100.0 * base.wins as f64 / base.trades as f64 } else { 0.0 });
+            println!(
+                "  Taker fees: {:.2} equity, {:.1}% win",
+                base.equity_delta,
+                if base.trades > 0 {
+                    100.0 * base.wins as f64 / base.trades as f64
+                } else {
+                    0.0
+                }
+            );
         }
     }
 
     // Position sizing analysis
-    let pos_results: Vec<_> = results.iter()
+    let pos_results: Vec<_> = results
+        .iter()
         .filter(|r| r.hypothesis.starts_with("pos_"))
         .collect();
     if !pos_results.is_empty() {
         println!("\nPOSITION SIZING:");
         for r in pos_results {
-            let win_pct = if r.trades > 0 { 100.0 * r.wins as f64 / r.trades as f64 } else { 0.0 };
-            println!("  {:<12} equity={:>8.2}  trades={:>4}  win={:.1}%",
-                     r.hypothesis, r.equity_delta, r.trades, win_pct);
+            let win_pct = if r.trades > 0 {
+                100.0 * r.wins as f64 / r.trades as f64
+            } else {
+                0.0
+            };
+            println!(
+                "  {:<12} equity={:>8.2}  trades={:>4}  win={:.1}%",
+                r.hypothesis, r.equity_delta, r.trades, win_pct
+            );
         }
     }
 
     // Entry selectivity analysis
-    let entry_results: Vec<_> = results.iter()
+    let entry_results: Vec<_> = results
+        .iter()
         .filter(|r| r.hypothesis.starts_with("entry_"))
         .collect();
     if !entry_results.is_empty() {
         println!("\nENTRY SELECTIVITY:");
         for r in entry_results {
-            let win_pct = if r.trades > 0 { 100.0 * r.wins as f64 / r.trades as f64 } else { 0.0 };
-            println!("  {:<12} equity={:>8.2}  trades={:>4}  win={:.1}%",
-                     r.hypothesis, r.equity_delta, r.trades, win_pct);
+            let win_pct = if r.trades > 0 {
+                100.0 * r.wins as f64 / r.trades as f64
+            } else {
+                0.0
+            };
+            println!(
+                "  {:<12} equity={:>8.2}  trades={:>4}  win={:.1}%",
+                r.hypothesis, r.equity_delta, r.trades, win_pct
+            );
         }
     }
 
     // Stop/profit analysis
-    let stop_results: Vec<_> = results.iter()
+    let stop_results: Vec<_> = results
+        .iter()
         .filter(|r| r.hypothesis.starts_with("stop_"))
         .collect();
     if !stop_results.is_empty() {
         println!("\nSTOP/PROFIT LEVELS:");
         for r in stop_results {
-            let win_pct = if r.trades > 0 { 100.0 * r.wins as f64 / r.trades as f64 } else { 0.0 };
-            println!("  {:<12} equity={:>8.2}  trades={:>4}  win={:.1}%  maxdd={:.2}%",
-                     r.hypothesis, r.equity_delta, r.trades, win_pct, r.max_drawdown * 100.0);
+            let win_pct = if r.trades > 0 {
+                100.0 * r.wins as f64 / r.trades as f64
+            } else {
+                0.0
+            };
+            println!(
+                "  {:<12} equity={:>8.2}  trades={:>4}  win={:.1}%  maxdd={:.2}%",
+                r.hypothesis,
+                r.equity_delta,
+                r.trades,
+                win_pct,
+                r.max_drawdown * 100.0
+            );
         }
     }
 
     // Optimized combinations
-    let opt_results: Vec<_> = results.iter()
+    let opt_results: Vec<_> = results
+        .iter()
         .filter(|r| r.hypothesis.starts_with("opt_"))
         .collect();
     if !opt_results.is_empty() {
         println!("\nOPTIMIZED COMBINATIONS:");
         for r in opt_results {
-            let win_pct = if r.trades > 0 { 100.0 * r.wins as f64 / r.trades as f64 } else { 0.0 };
+            let win_pct = if r.trades > 0 {
+                100.0 * r.wins as f64 / r.trades as f64
+            } else {
+                0.0
+            };
             let sharpe_proxy = if r.max_drawdown.abs() > 0.001 {
                 r.equity_delta / (r.max_drawdown.abs() * 1000.0)
             } else {
                 r.equity_delta
             };
-            println!("  {:<16} equity={:>8.2}  trades={:>4}  win={:.1}%  sharpe~={:.2}",
-                     r.hypothesis, r.equity_delta, r.trades, win_pct, sharpe_proxy);
+            println!(
+                "  {:<16} equity={:>8.2}  trades={:>4}  win={:.1}%  sharpe~={:.2}",
+                r.hypothesis, r.equity_delta, r.trades, win_pct, sharpe_proxy
+            );
         }
     }
 
@@ -509,14 +703,21 @@ fn main() {
     println!("=== Summary Statistics ===");
     let profitable: Vec<_> = results.iter().filter(|r| r.equity_delta > 0.0).collect();
     let total = results.len();
-    println!("Profitable hypotheses: {}/{} ({:.1}%)", profitable.len(), total, 100.0 * profitable.len() as f64 / total as f64);
+    println!(
+        "Profitable hypotheses: {}/{} ({:.1}%)",
+        profitable.len(),
+        total,
+        100.0 * profitable.len() as f64 / total as f64
+    );
 
     let avg_equity: f64 = results.iter().map(|r| r.equity_delta).sum::<f64>() / total as f64;
     let avg_trades: f64 = results.iter().map(|r| r.trades as f64).sum::<f64>() / total as f64;
-    let avg_winrate: f64 = results.iter()
+    let avg_winrate: f64 = results
+        .iter()
         .filter(|r| r.trades > 0)
         .map(|r| r.wins as f64 / r.trades as f64)
-        .sum::<f64>() / results.iter().filter(|r| r.trades > 0).count().max(1) as f64;
+        .sum::<f64>()
+        / results.iter().filter(|r| r.trades > 0).count().max(1) as f64;
 
     println!("Average equity delta: {:.2}", avg_equity);
     println!("Average trades: {:.0}", avg_trades);
@@ -525,20 +726,41 @@ fn main() {
     // Best per category
     println!();
     println!("=== Best Per Category ===");
-    if let Some(best) = results.iter().max_by(|a, b| a.equity_delta.partial_cmp(&b.equity_delta).unwrap()) {
-        println!("Best equity:    {} ({:.2})", best.hypothesis, best.equity_delta);
+    if let Some(best) = results
+        .iter()
+        .max_by(|a, b| a.equity_delta.partial_cmp(&b.equity_delta).unwrap())
+    {
+        println!(
+            "Best equity:    {} ({:.2})",
+            best.hypothesis, best.equity_delta
+        );
     }
     if let Some(best) = results.iter().filter(|r| r.trades > 10).max_by(|a, b| {
         let a_wr = a.wins as f64 / a.trades as f64;
         let b_wr = b.wins as f64 / b.trades as f64;
         a_wr.partial_cmp(&b_wr).unwrap()
     }) {
-        println!("Best win rate:  {} ({:.1}%, {} trades)", best.hypothesis,
-                 100.0 * best.wins as f64 / best.trades as f64, best.trades);
+        println!(
+            "Best win rate:  {} ({:.1}%, {} trades)",
+            best.hypothesis,
+            100.0 * best.wins as f64 / best.trades as f64,
+            best.trades
+        );
     }
-    if let Some(best) = results.iter().filter(|r| r.max_drawdown < 0.0).min_by(|a, b| {
-        a.max_drawdown.abs().partial_cmp(&b.max_drawdown.abs()).unwrap()
-    }) {
-        println!("Lowest drawdown: {} ({:.2}%)", best.hypothesis, best.max_drawdown * 100.0);
+    if let Some(best) = results
+        .iter()
+        .filter(|r| r.max_drawdown < 0.0)
+        .min_by(|a, b| {
+            a.max_drawdown
+                .abs()
+                .partial_cmp(&b.max_drawdown.abs())
+                .unwrap()
+        })
+    {
+        println!(
+            "Lowest drawdown: {} ({:.2}%)",
+            best.hypothesis,
+            best.max_drawdown * 100.0
+        );
     }
 }

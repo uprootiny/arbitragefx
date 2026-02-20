@@ -94,11 +94,7 @@ fn main() {
     let config_hash = cfg.config_hash();
     let sha = git_sha();
     let timestamp = chrono::Utc::now().to_rfc3339();
-    let system_info = format!(
-        "{} {}",
-        std::env::consts::OS,
-        std::env::consts::ARCH
-    );
+    let system_info = format!("{} {}", std::env::consts::OS, std::env::consts::ARCH);
 
     // Regime datasets (core 4) plus any extras found
     let core_datasets = vec![
@@ -119,7 +115,12 @@ fn main() {
     }
 
     println!("=== ArbitrageFX Bench ===");
-    println!("config_hash={} git={} ts={}", &config_hash[..12], sha, timestamp);
+    println!(
+        "config_hash={} git={} ts={}",
+        &config_hash[..12],
+        sha,
+        timestamp
+    );
     println!();
 
     let total_start = Instant::now();

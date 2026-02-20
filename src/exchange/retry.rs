@@ -1,7 +1,7 @@
-use std::future::Future;
 use anyhow::{anyhow, Result};
-use tokio::time::{sleep, Duration};
 use rand::Rng;
+use std::future::Future;
+use tokio::time::{sleep, Duration};
 
 /// Retry configuration
 #[derive(Clone, Debug)]
@@ -76,13 +76,14 @@ where
 
 /// Categorize errors for retry decisions
 pub fn is_retryable_http_error(status: u16) -> bool {
-    matches!(status,
+    matches!(
+        status,
         408 |   // Request Timeout
         429 |   // Too Many Requests
         500 |   // Internal Server Error
         502 |   // Bad Gateway
         503 |   // Service Unavailable
-        504     // Gateway Timeout
+        504 // Gateway Timeout
     )
 }
 
@@ -139,7 +140,8 @@ mod tests {
                     Ok(42)
                 }
             }
-        }).await;
+        })
+        .await;
 
         assert_eq!(result.unwrap(), 42);
         assert_eq!(counter.load(std::sync::atomic::Ordering::SeqCst), 3);

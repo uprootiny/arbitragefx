@@ -12,7 +12,7 @@
 //! > "The danger is not the market. It's being pulled into narrative
 //! >  while believing you're acting on data."
 
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 
 /// Narrative regime classification
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -30,7 +30,10 @@ pub enum NarrativeRegime {
 impl NarrativeRegime {
     /// Should we reduce exposure in this regime?
     pub fn should_reduce_exposure(&self) -> bool {
-        matches!(self, NarrativeRegime::NarrativeDriven | NarrativeRegime::Reflexive)
+        matches!(
+            self,
+            NarrativeRegime::NarrativeDriven | NarrativeRegime::Reflexive
+        )
     }
 
     /// Maximum position size multiplier for this regime
@@ -169,13 +172,19 @@ impl NarrativeIndicators {
         // Specific indicator triggers
         if self.funding_zscore.abs() > 2.5 {
             actions.push(DefensiveAction::LogWarning {
-                msg: format!("Extreme funding: z={:.2}. Crowded trade warning.", self.funding_zscore),
+                msg: format!(
+                    "Extreme funding: z={:.2}. Crowded trade warning.",
+                    self.funding_zscore
+                ),
             });
         }
 
         if self.liquidation_score > 3.0 {
             actions.push(DefensiveAction::LogWarning {
-                msg: format!("Liquidation cascade: score={:.2}. Forced flow dominant.", self.liquidation_score),
+                msg: format!(
+                    "Liquidation cascade: score={:.2}. Forced flow dominant.",
+                    self.liquidation_score
+                ),
             });
         }
 
@@ -247,9 +256,7 @@ impl SelfDeceptionDetector {
         score += (self.cooldown_shortenings as f64 * 0.15).min(0.3);
 
         // Parameter changes after wins suggest narrative fitting
-        let post_win_changes = self.param_changes.iter()
-            .filter(|c| c.after_win)
-            .count();
+        let post_win_changes = self.param_changes.iter().filter(|c| c.after_win).count();
         score += (post_win_changes as f64 * 0.1).min(0.3);
 
         score.min(1.0)
@@ -274,7 +281,8 @@ impl SelfDeceptionDetector {
         if self.size_trend_in_vol > 0.1 {
             w.push(
                 "Position sizes increasing during volatility. This is backwards - \
-                 high vol should mean smaller sizes.".to_string()
+                 high vol should mean smaller sizes."
+                    .to_string(),
             );
         }
 
@@ -285,13 +293,14 @@ impl SelfDeceptionDetector {
             ));
         }
 
-        let post_win_changes: Vec<_> = self.param_changes.iter()
-            .filter(|c| c.after_win)
-            .collect();
+        let post_win_changes: Vec<_> = self.param_changes.iter().filter(|c| c.after_win).collect();
         if !post_win_changes.is_empty() {
             w.push(format!(
                 "Parameters changed after wins: {:?}. This is curve-fitting to luck.",
-                post_win_changes.iter().map(|c| &c.param_name).collect::<Vec<_>>()
+                post_win_changes
+                    .iter()
+                    .map(|c| &c.param_name)
+                    .collect::<Vec<_>>()
             ));
         }
 
@@ -351,10 +360,10 @@ mod tests {
     #[test]
     fn test_reflexive_regime() {
         let indicators = NarrativeIndicators {
-            funding_zscore: 4.0,  // Extreme funding
-            liquidation_score: 5.0,  // Heavy liquidations
+            funding_zscore: 4.0,    // Extreme funding
+            liquidation_score: 5.0, // Heavy liquidations
             volatility_ratio: 3.0,  // Triple normal vol
-            oi_change_rate: 0.2,  // Rapid OI change
+            oi_change_rate: 0.2,    // Rapid OI change
             ..Default::default()
         };
 
@@ -379,15 +388,20 @@ mod tests {
         let regime = indicators.regime();
 
         // Should be in NarrativeDriven range (0.50 - 0.75)
-        assert!(score >= 0.50 && score < 0.75,
-            "Score {} should be in NarrativeDriven range", score);
+        assert!(
+            score >= 0.50 && score < 0.75,
+            "Score {} should be in NarrativeDriven range",
+            score
+        );
         assert_eq!(regime, NarrativeRegime::NarrativeDriven);
 
         let actions = indicators.defensive_actions();
         assert!(!actions.is_empty());
 
         // Should include position reduction for NarrativeDriven
-        let has_reduction = actions.iter().any(|a| matches!(a, DefensiveAction::ReducePositionSize { .. }));
+        let has_reduction = actions
+            .iter()
+            .any(|a| matches!(a, DefensiveAction::ReducePositionSize { .. }));
         assert!(has_reduction, "NarrativeDriven should reduce position size");
     }
 
@@ -407,13 +421,19 @@ mod tests {
         let regime = indicators.regime();
 
         // Should be Reflexive (>= 0.75)
-        assert!(score >= 0.75, "Score {} should be >= 0.75 for Reflexive", score);
+        assert!(
+            score >= 0.75,
+            "Score {} should be >= 0.75 for Reflexive",
+            score
+        );
         assert_eq!(regime, NarrativeRegime::Reflexive);
 
         let actions = indicators.defensive_actions();
 
         // Reflexive should halt new positions
-        let has_halt = actions.iter().any(|a| matches!(a, DefensiveAction::HaltNewPositions));
+        let has_halt = actions
+            .iter()
+            .any(|a| matches!(a, DefensiveAction::HaltNewPositions));
         assert!(has_halt, "Reflexive regime should halt new positions");
     }
 

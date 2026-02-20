@@ -42,5 +42,12 @@ impl Strategy for SimpleMomentum {
 }
 
 pub fn default_candle() -> Candle {
-    Candle { ts: 0, o: 0.0, h: 0.0, l: 0.0, c: 0.0, v: 0.0 }
+    Candle {
+        ts: 0,
+        o: 0.0,
+        h: 0.0,
+        l: 0.0,
+        c: 0.0,
+        v: 0.0,
+    }
 }

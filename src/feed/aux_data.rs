@@ -113,11 +113,14 @@ impl LiquidationWindow {
         let now = Instant::now();
         let window = self.window_secs as f64;
 
-        self.events.iter().map(|e| {
-            let age = now.duration_since(e.ts).as_secs_f64();
-            let weight = 1.0 - (age / window).min(1.0);
-            e.size_usd * weight / 100_000.0 // normalize to reasonable scale
-        }).sum()
+        self.events
+            .iter()
+            .map(|e| {
+                let age = now.duration_since(e.ts).as_secs_f64();
+                let weight = 1.0 - (age / window).min(1.0);
+                e.size_usd * weight / 100_000.0 // normalize to reasonable scale
+            })
+            .sum()
     }
 }
 
@@ -184,7 +187,7 @@ struct CoinGeckoPrices {
 
 impl AuxDataFetcher {
     pub fn new() -> Self {
-        Self::with_ttl(60)  // Default 60s TTL
+        Self::with_ttl(60) // Default 60s TTL
     }
 
     pub fn with_ttl(cache_ttl_secs: u64) -> Self {
@@ -203,7 +206,10 @@ impl AuxDataFetcher {
     pub async fn fetch(&self, symbol: &str) -> Result<MarketAux> {
         // Check cache first
         let should_fetch = {
-            let cache = self.cache.lock().map_err(|_| anyhow::anyhow!("aux cache lock poisoned"))?;
+            let cache = self
+                .cache
+                .lock()
+                .map_err(|_| anyhow::anyhow!("aux cache lock poisoned"))?;
             match cache.get(symbol) {
                 Some(cached) if cached.is_fresh(self.cache_ttl_secs) => {
                     return Ok(cached.data);
@@ -218,8 +224,12 @@ impl AuxDataFetcher {
         if should_fetch {
             match self.fetch_fresh(symbol).await {
                 Ok(data) => {
-                    let mut cache = self.cache.lock().map_err(|_| anyhow::anyhow!("aux cache lock poisoned"))?;
-                    cache.entry(symbol.to_string())
+                    let mut cache = self
+                        .cache
+                        .lock()
+                        .map_err(|_| anyhow::anyhow!("aux cache lock poisoned"))?;
+                    cache
+                        .entry(symbol.to_string())
                         .and_modify(|c| c.record_success(data))
                         .or_insert_with(|| CachedAux::new(data));
                     return Ok(data);
@@ -268,7 +278,8 @@ impl AuxDataFetcher {
         let has_depeg = premium_opt.is_some() || depeg_opt.is_some();
 
         // Calculate liquidation score from window
-        let (liquidation_score, has_liquidations) = self.liquidation_window
+        let (liquidation_score, has_liquidations) = self
+            .liquidation_window
             .lock()
             .map(|mut w| {
                 let score = w.score();
@@ -374,7 +385,8 @@ impl AuxDataFetcher {
 
     /// Fetch stablecoin prices from CoinGecko to detect depeg
     async fn fetch_stablecoin_depeg(&self) -> Result<f64> {
-        let url = "https://api.coingecko.com/api/v3/simple/price?ids=tether,usd-coin&vs_currencies=usd";
+        let url =
+            "https://api.coingecko.com/api/v3/simple/price?ids=tether,usd-coin&vs_currencies=usd";
 
         let resp = self.client.get(url).send().await?;
 
@@ -392,7 +404,11 @@ impl AuxDataFetcher {
             (None, None) => Err(anyhow::anyhow!("missing stablecoin prices")),
             (Some(v), None) | (None, Some(v)) => Ok(v),
             (Some(a), Some(b)) => {
-                if a.abs() > b.abs() { Ok(a) } else { Ok(b) }
+                if a.abs() > b.abs() {
+                    Ok(a)
+                } else {
+                    Ok(b)
+                }
             }
         }
     }

@@ -56,8 +56,7 @@ impl BinanceReconcileClient {
     pub async fn fetch_open_orders(&self, symbol: &str) -> Result<Vec<SpotOrder>> {
         let timestamp = Self::timestamp_ms();
         let query = format!("symbol={}&timestamp={}&recvWindow=5000", symbol, timestamp);
-        let signature = sign_binance(&query, &self.api_secret)
-            .map_err(|e| anyhow!(e))?;
+        let signature = sign_binance(&query, &self.api_secret).map_err(|e| anyhow!(e))?;
         let signed_query = format!("{}&signature={}", query, signature);
         let url = format!("{}/api/v3/openOrders?{}", self.spot_base, signed_query);
 
@@ -99,8 +98,7 @@ impl BinanceReconcileClient {
     pub async fn fetch_spot_balances(&self) -> Result<Vec<SpotBalance>> {
         let timestamp = Self::timestamp_ms();
         let query = format!("timestamp={}&recvWindow=5000", timestamp);
-        let signature = sign_binance(&query, &self.api_secret)
-            .map_err(|e| anyhow!(e))?;
+        let signature = sign_binance(&query, &self.api_secret).map_err(|e| anyhow!(e))?;
         let signed_query = format!("{}&signature={}", query, signature);
         let url = format!("{}/api/v3/account?{}", self.spot_base, signed_query);
 
@@ -143,8 +141,7 @@ impl BinanceReconcileClient {
     pub async fn fetch_futures_positions(&self, symbol: &str) -> Result<Vec<FuturesPosition>> {
         let timestamp = Self::timestamp_ms();
         let query = format!("timestamp={}&recvWindow=5000", timestamp);
-        let signature = sign_binance(&query, &self.api_secret)
-            .map_err(|e| anyhow!(e))?;
+        let signature = sign_binance(&query, &self.api_secret).map_err(|e| anyhow!(e))?;
         let signed_query = format!("{}&signature={}", query, signature);
         let url = format!("{}/fapi/v2/positionRisk?{}", self.fapi_base, signed_query);
 

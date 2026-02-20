@@ -8,7 +8,7 @@
 //! > "Drift is computed even if you don't trade — because 'no-trade due to
 //! >  uncertainty' is still a state you need mindfulness about."
 
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 use std::collections::VecDeque;
 
 /// Drift severity levels with corresponding actions
@@ -364,7 +364,8 @@ impl DriftTracker {
 
     /// Get reports for all features
     pub fn reports(&self) -> Vec<DriftReport> {
-        self.features.iter()
+        self.features
+            .iter()
             .filter(|f| f.is_ready())
             .map(|f| f.report())
             .collect()
@@ -374,7 +375,8 @@ impl DriftTracker {
     pub fn compute_overall(&mut self) -> DriftSeverity {
         let reports = self.reports();
 
-        self.overall_severity = reports.iter()
+        self.overall_severity = reports
+            .iter()
             .map(|r| r.severity)
             .max_by_key(|s| match s {
                 DriftSeverity::None => 0,
@@ -483,7 +485,10 @@ mod tests {
         }
 
         let report = tracker.report();
-        assert!(matches!(report.severity, DriftSeverity::None | DriftSeverity::Low));
+        assert!(matches!(
+            report.severity,
+            DriftSeverity::None | DriftSeverity::Low
+        ));
     }
 
     #[test]
@@ -505,13 +510,20 @@ mod tests {
         let report = tracker.report();
 
         // Recent (last 10) should be ~200
-        assert!(report.recent_mean > 180.0,
-            "Recent mean should be ~200: {}", report.recent_mean);
+        assert!(
+            report.recent_mean > 180.0,
+            "Recent mean should be ~200: {}",
+            report.recent_mean
+        );
 
         // Baseline (last 100) includes both old and new, so will be elevated
         // but the key is that mean_shift_z should be high
-        assert!(report.mean_shift_z > 1.0 || report.score > 1.0,
-            "Should detect drift: z={:.2}, score={:.2}", report.mean_shift_z, report.score);
+        assert!(
+            report.mean_shift_z > 1.0 || report.score > 1.0,
+            "Should detect drift: z={:.2}, score={:.2}",
+            report.mean_shift_z,
+            report.score
+        );
     }
 
     #[test]
@@ -532,7 +544,10 @@ mod tests {
 
         tracker.compute_overall();
         // Should be stable
-        assert!(matches!(tracker.overall_severity, DriftSeverity::None | DriftSeverity::Low));
+        assert!(matches!(
+            tracker.overall_severity,
+            DriftSeverity::None | DriftSeverity::Low
+        ));
     }
 
     /// Pseudo-random for deterministic tests

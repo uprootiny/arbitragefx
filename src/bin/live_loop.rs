@@ -21,7 +21,9 @@ async fn main() -> Result<()> {
     eprintln!("[live_loop] starting with symbol={}", cfg.symbol);
 
     loop {
-        let candle = exchange.fetch_latest_candle(&cfg.symbol, cfg.candle_granularity).await?;
+        let candle = exchange
+            .fetch_latest_candle(&cfg.symbol, cfg.candle_granularity)
+            .await?;
         market.on_candle(candle);
 
         // Fetch real auxiliary data (funding, borrow, liquidations, depeg)

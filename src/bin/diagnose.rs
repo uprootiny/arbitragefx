@@ -9,12 +9,15 @@ use arbitragefx::state::{Config, Fill, MarketState, StrategyInstance};
 use arbitragefx::strategy::{Action, MarketAux};
 
 fn main() {
-    let path = std::env::args().nth(1).unwrap_or_else(|| "data/btc_binance.csv".to_string());
+    let path = std::env::args()
+        .nth(1)
+        .unwrap_or_else(|| "data/btc_binance.csv".to_string());
 
     let file = File::open(&path).expect("Failed to open file");
     let mut rows: Vec<CsvRow> = Vec::new();
     for line in BufReader::new(file).lines().flatten() {
-        if line.trim().is_empty() || line.starts_with('#') || line.to_lowercase().starts_with("ts,") {
+        if line.trim().is_empty() || line.starts_with('#') || line.to_lowercase().starts_with("ts,")
+        {
             continue;
         }
         if let Ok(r) = parse_csv_line(&line) {
@@ -30,8 +33,10 @@ fn main() {
     let mut strategies = StrategyInstance::build_default_set(cfg.clone());
     let mut risk = RiskEngine::new(cfg.clone());
 
-    let mut action_counts: std::collections::HashMap<String, u64> = std::collections::HashMap::new();
-    let mut guard_reasons: std::collections::HashMap<String, u64> = std::collections::HashMap::new();
+    let mut action_counts: std::collections::HashMap<String, u64> =
+        std::collections::HashMap::new();
+    let mut guard_reasons: std::collections::HashMap<String, u64> =
+        std::collections::HashMap::new();
     let mut positions: Vec<(u64, f64, f64)> = Vec::new(); // (ts, position, price)
 
     for (bar_idx, row) in rows.iter().enumerate() {
@@ -84,7 +89,11 @@ fn main() {
             Action::Hold => None,
             Action::Close => {
                 let qty = -inst.state.portfolio.position;
-                if qty.abs() > 1e-9 { Some((qty, row.c)) } else { None }
+                if qty.abs() > 1e-9 {
+                    Some((qty, row.c))
+                } else {
+                    None
+                }
             }
             Action::Buy { qty } => Some((qty, row.c)),
             Action::Sell { qty } => Some((-qty.abs(), row.c)),
@@ -92,24 +101,33 @@ fn main() {
 
         if let Some((qty, price)) = fill {
             let fee = price * qty.abs() * 0.001;
-            let realized = inst.state.portfolio.apply_fill(Fill { price, qty, fee, ts: row.ts });
+            let realized = inst.state.portfolio.apply_fill(Fill {
+                price,
+                qty,
+                fee,
+                ts: row.ts,
+            });
 
             // Log trades
             if bar_idx < 50 || realized.abs() > 0.0 {
-                println!("Bar {}: {} @ {:.2} qty={:.4} realized={:.4} pos={:.4}",
-                         bar_idx, action_name, price, qty, realized, inst.state.portfolio.position);
+                println!(
+                    "Bar {}: {} @ {:.2} qty={:.4} realized={:.4} pos={:.4}",
+                    bar_idx, action_name, price, qty, realized, inst.state.portfolio.position
+                );
             }
 
             inst.state.metrics.record_trade(realized);
         }
 
         // Mark to market equity and track drawdown
-        inst.state.portfolio.equity = inst.state.portfolio.cash + inst.state.portfolio.position * row.c;
+        inst.state.portfolio.equity =
+            inst.state.portfolio.cash + inst.state.portfolio.position * row.c;
         if inst.state.portfolio.equity > inst.state.metrics.equity_peak {
             inst.state.metrics.equity_peak = inst.state.portfolio.equity;
         }
         if inst.state.metrics.equity_peak > 0.0 {
-            let dd = (inst.state.portfolio.equity - inst.state.metrics.equity_peak) / inst.state.metrics.equity_peak;
+            let dd = (inst.state.portfolio.equity - inst.state.metrics.equity_peak)
+                / inst.state.metrics.equity_peak;
             if dd < inst.state.metrics.max_drawdown {
                 inst.state.metrics.max_drawdown = dd;
             }
@@ -124,7 +142,12 @@ fn main() {
     println!();
     println!("=== Action Distribution ===");
     for (action, count) in &action_counts {
-        println!("{}: {} ({:.1}%)", action, count, 100.0 * *count as f64 / rows.len() as f64);
+        println!(
+            "{}: {} ({:.1}%)",
+            action,
+            count,
+            100.0 * *count as f64 / rows.len() as f64
+        );
     }
 
     println!();
@@ -145,9 +168,15 @@ fn main() {
     println!("PnL: {:.4}", inst.state.metrics.pnl);
     println!("Wins: {}", inst.state.metrics.wins);
     println!("Losses: {}", inst.state.metrics.losses);
-    println!("Win Rate: {:.1}%", if inst.state.metrics.wins + inst.state.metrics.losses > 0 {
-        100.0 * inst.state.metrics.wins as f64 / (inst.state.metrics.wins + inst.state.metrics.losses) as f64
-    } else { 0.0 });
+    println!(
+        "Win Rate: {:.1}%",
+        if inst.state.metrics.wins + inst.state.metrics.losses > 0 {
+            100.0 * inst.state.metrics.wins as f64
+                / (inst.state.metrics.wins + inst.state.metrics.losses) as f64
+        } else {
+            0.0
+        }
+    );
     println!("Expectancy: {:.4}", inst.state.metrics.expectancy());
     println!("Position: {:.6}", inst.state.portfolio.position);
     println!("Equity: {:.2}", inst.state.portfolio.equity);
@@ -163,5 +192,8 @@ fn main() {
     println!("Momentum: {:.4}", view.indicators.momentum);
     println!("Z-momentum: {:.4}", view.indicators.z_momentum);
     println!("Z-vol: {:.4}", view.indicators.z_vol);
-    println!("Vol/Vol_mean: {:.4}", view.indicators.vol / view.indicators.vol_mean.max(1e-9));
+    println!(
+        "Vol/Vol_mean: {:.4}",
+        view.indicators.vol / view.indicators.vol_mean.max(1e-9)
+    );
 }

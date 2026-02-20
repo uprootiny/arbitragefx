@@ -65,16 +65,16 @@ impl Level {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Domain {
-    Market,    // Price data, candles, indicators
-    Strategy,  // Signal generation, decisions
-    Risk,      // Guard checks, limits, ethics
-    Exec,      // Order lifecycle, submissions
-    Fill,      // Fill processing, reconciliation
-    Drift,     // Distribution drift detection
-    System,    // Startup, shutdown, recovery
-    Profile,   // Performance profiling
-    Audit,     // Replay/audit trail entries
-    Agent,     // AI agent guidance logs
+    Market,   // Price data, candles, indicators
+    Strategy, // Signal generation, decisions
+    Risk,     // Guard checks, limits, ethics
+    Exec,     // Order lifecycle, submissions
+    Fill,     // Fill processing, reconciliation
+    Drift,    // Distribution drift detection
+    System,   // Startup, shutdown, recovery
+    Profile,  // Performance profiling
+    Audit,    // Replay/audit trail entries
+    Agent,    // AI agent guidance logs
 }
 
 impl Domain {
@@ -124,9 +124,8 @@ struct RunContext {
 
 fn ensure_run_context() -> &'static RunContext {
     RUN_CONTEXT.get_or_init(|| {
-        let run_id = std::env::var("RUN_ID").unwrap_or_else(|_| {
-            format!("r-{}-{}", ts_epoch_ms(), process::id())
-        });
+        let run_id = std::env::var("RUN_ID")
+            .unwrap_or_else(|_| format!("r-{}-{}", ts_epoch_ms(), process::id()));
         let base = std::env::var("LOG_DIR").unwrap_or_else(|_| "out/runs".to_string());
         let mut run_dir = PathBuf::from(base);
         run_dir.push(&run_id);
@@ -173,7 +172,13 @@ fn ensure_run_context() -> &'static RunContext {
 
 fn sanitize_fields(mut fields: Map<String, Value>) -> Map<String, Value> {
     let redacted = Value::String("[REDACTED]".to_string());
-    for key in ["authorization", "Authorization", "X-MBX-APIKEY", "api_key", "signature"] {
+    for key in [
+        "authorization",
+        "Authorization",
+        "X-MBX-APIKEY",
+        "api_key",
+        "signature",
+    ] {
         if fields.contains_key(key) {
             fields.insert(key.to_string(), redacted.clone());
         }
@@ -325,7 +330,10 @@ pub fn log_reasoning(strategy_id: &str, steps: &[&str]) {
         "reasoning",
         obj(&[
             ("strategy_id", v_str(strategy_id)),
-            ("steps", Value::Array(steps.iter().map(|s| v_str(s)).collect())),
+            (
+                "steps",
+                Value::Array(steps.iter().map(|s| v_str(s)).collect()),
+            ),
         ]),
     );
 }
@@ -335,12 +343,7 @@ pub fn log_reasoning(strategy_id: &str, steps: &[&str]) {
 // =============================================================================
 
 /// Log an audit entry for replay verification
-pub fn log_audit(
-    event_type: &str,
-    state_hash: &str,
-    input_hash: &str,
-    output_hash: &str,
-) {
+pub fn log_audit(event_type: &str, state_hash: &str, input_hash: &str, output_hash: &str) {
     log(
         Level::Info,
         Domain::Audit,
@@ -614,7 +617,11 @@ impl ProfileScope {
         }
     }
 
-    pub fn with_context(_module: &'static str, label: &'static str, fields: &[(&str, Value)]) -> Self {
+    pub fn with_context(
+        _module: &'static str,
+        label: &'static str,
+        fields: &[(&str, Value)],
+    ) -> Self {
         let enabled = Self::should_sample();
         Self {
             domain: Domain::Profile,

@@ -188,7 +188,10 @@ fn load_bench_history() -> Vec<BenchHistoryEntry> {
         for entry in rd.filter_map(|e| e.ok()) {
             let path = entry.path();
             if path.extension().map(|e| e == "json").unwrap_or(false)
-                && path.file_name().map(|n| n != "report.json").unwrap_or(false)
+                && path
+                    .file_name()
+                    .map(|n| n != "report.json")
+                    .unwrap_or(false)
             {
                 if let Ok(content) = fs::read_to_string(&path) {
                     if let Ok(val) = serde_json::from_str::<serde_json::Value>(&content) {
@@ -247,9 +250,10 @@ fn main() {
         .ok()
         .and_then(|s| serde_json::from_str(&s).ok());
 
-    let walk_forward: Option<serde_json::Value> = fs::read_to_string("out/walk_forward/report.json")
-        .ok()
-        .and_then(|s| serde_json::from_str(&s).ok());
+    let walk_forward: Option<serde_json::Value> =
+        fs::read_to_string("out/walk_forward/report.json")
+            .ok()
+            .and_then(|s| serde_json::from_str(&s).ok());
 
     let hypotheses = parse_hypotheses();
     let bench_history = load_bench_history();
@@ -258,8 +262,18 @@ fn main() {
     let dataset_count = count_datasets();
 
     println!("  hypotheses: {}", hypotheses.len());
-    println!("  bench: {}", if bench.is_some() { "loaded" } else { "missing" });
-    println!("  walk_forward: {}", if walk_forward.is_some() { "loaded" } else { "missing" });
+    println!(
+        "  bench: {}",
+        if bench.is_some() { "loaded" } else { "missing" }
+    );
+    println!(
+        "  walk_forward: {}",
+        if walk_forward.is_some() {
+            "loaded"
+        } else {
+            "missing"
+        }
+    );
     println!("  bench_history: {} entries", bench_history.len());
     println!("  run_history: {} entries", run_history.len());
     println!("  tests: {}", test_count);
@@ -287,7 +301,10 @@ fn main() {
     fs::write("out/workbench/index.html", &html).unwrap();
 
     println!();
-    println!("  docs/workbench.html written ({:.1} KB)", html.len() as f64 / 1024.0);
+    println!(
+        "  docs/workbench.html written ({:.1} KB)",
+        html.len() as f64 / 1024.0
+    );
     println!("  out/workbench/index.html written");
 }
 

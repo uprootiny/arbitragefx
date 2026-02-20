@@ -109,16 +109,18 @@ pub async fn start_ws_listener(
                                 let price: f64 = report.last_price.parse().unwrap_or(0.0);
                                 let fee: f64 = report.commission.parse().unwrap_or(0.0);
                                 if qty > 0.0 && price > 0.0 {
-                                    let _ = sender.send(FillEvent {
-                                        client_id: report.client_id.clone(),
-                                        order_id: report.order_id.to_string(),
-                                        fill_id: format!("trade-{}", report.trade_id),
-                                        price,
-                                        qty,
-                                        fee,
-                                        ts: report.trade_time / 1000,
-                                        side: report.side.clone(),
-                                    }).await;
+                                    let _ = sender
+                                        .send(FillEvent {
+                                            client_id: report.client_id.clone(),
+                                            order_id: report.order_id.to_string(),
+                                            fill_id: format!("trade-{}", report.trade_id),
+                                            price,
+                                            qty,
+                                            fee,
+                                            ts: report.trade_time / 1000,
+                                            side: report.side.clone(),
+                                        })
+                                        .await;
                                 }
                             }
                         }
@@ -151,16 +153,22 @@ pub async fn start_poll_fallback(
                 let price: f64 = t.price.parse().unwrap_or(0.0);
                 let fee: f64 = t.commission.parse().unwrap_or(0.0);
                 if qty > 0.0 && price > 0.0 {
-                    let _ = sender.send(FillEvent {
-                        client_id: t.client_id.clone(),
-                        order_id: t.order_id.to_string(),
-                        fill_id: format!("trade-{}", t.id),
-                        price,
-                        qty,
-                        fee,
-                        ts: t.time_ms / 1000,
-                        side: if t.is_buyer { "BUY".to_string() } else { "SELL".to_string() },
-                    }).await;
+                    let _ = sender
+                        .send(FillEvent {
+                            client_id: t.client_id.clone(),
+                            order_id: t.order_id.to_string(),
+                            fill_id: format!("trade-{}", t.id),
+                            price,
+                            qty,
+                            fee,
+                            ts: t.time_ms / 1000,
+                            side: if t.is_buyer {
+                                "BUY".to_string()
+                            } else {
+                                "SELL".to_string()
+                            },
+                        })
+                        .await;
                 }
             }
         }
@@ -170,7 +178,8 @@ pub async fn start_poll_fallback(
 
 async fn get_listen_key(client: &Client, api_key: &str, base: &str) -> Result<String> {
     let url = format!("{}/api/v3/userDataStream", base);
-    let resp = client.post(url)
+    let resp = client
+        .post(url)
         .header("X-MBX-APIKEY", api_key)
         .send()
         .await?;
@@ -181,7 +190,8 @@ async fn get_listen_key(client: &Client, api_key: &str, base: &str) -> Result<St
 
 async fn keepalive_listen_key(client: &Client, api_key: &str, base: &str) -> Result<()> {
     let url = format!("{}/api/v3/userDataStream", base);
-    let _ = client.put(url)
+    let _ = client
+        .put(url)
         .header("X-MBX-APIKEY", api_key)
         .send()
         .await?;
@@ -201,12 +211,12 @@ async fn fetch_my_trades(
     if start_time_ms > 0 {
         query.push_str(&format!("&startTime={}", start_time_ms));
     }
-    let signature = sign_binance(&query, api_secret)
-        .map_err(|e| anyhow::anyhow!(e))?;
+    let signature = sign_binance(&query, api_secret).map_err(|e| anyhow::anyhow!(e))?;
     let signed = format!("{}&signature={}", query, signature);
     let url = format!("{}/api/v3/myTrades?{}", base, signed);
 
-    let resp = client.get(url)
+    let resp = client
+        .get(url)
         .header("X-MBX-APIKEY", api_key)
         .send()
         .await?;

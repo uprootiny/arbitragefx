@@ -9,7 +9,9 @@ pub struct OrderBook {
 
 impl OrderBook {
     pub fn new() -> Self {
-        Self { orders: HashMap::new() }
+        Self {
+            orders: HashMap::new(),
+        }
     }
 
     pub fn ensure(&mut self, client_id: &str, qty: f64) {
@@ -18,7 +20,11 @@ impl OrderBook {
             .or_insert_with(|| Order::new(client_id.to_string(), qty));
     }
 
-    pub fn apply(&mut self, client_id: &str, event: Event) -> Result<(OrderState, OrderState), String> {
+    pub fn apply(
+        &mut self,
+        client_id: &str,
+        event: Event,
+    ) -> Result<(OrderState, OrderState), String> {
         let order = self
             .orders
             .get_mut(client_id)

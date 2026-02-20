@@ -10,7 +10,12 @@ pub struct RollingStats {
 
 impl RollingStats {
     pub fn new(window: usize) -> Self {
-        Self { window, buf: VecDeque::new(), sum: 0.0, sumsq: 0.0 }
+        Self {
+            window,
+            buf: VecDeque::new(),
+            sum: 0.0,
+            sumsq: 0.0,
+        }
     }
 
     pub fn push(&mut self, x: f64) {
@@ -26,12 +31,20 @@ impl RollingStats {
     }
 
     pub fn mean(&self) -> f64 {
-        if self.buf.is_empty() { 0.0 } else { self.sum / self.buf.len() as f64 }
+        if self.buf.is_empty() {
+            0.0
+        } else {
+            self.sum / self.buf.len() as f64
+        }
     }
 
     pub fn variance(&self) -> f64 {
         let n = self.buf.len() as f64;
-        if n < 2.0 { 0.0 } else { (self.sumsq - (self.sum * self.sum) / n) / (n - 1.0) }
+        if n < 2.0 {
+            0.0
+        } else {
+            (self.sumsq - (self.sum * self.sum) / n) / (n - 1.0)
+        }
     }
 
     pub fn stddev(&self) -> f64 {
@@ -100,7 +113,11 @@ impl FeaturePipeline {
         self.oi.push(oi);
         self.price.push(price);
 
-        let price_vel = if self.last_price > 0.0 { (price - self.last_price) / self.last_price } else { 0.0 };
+        let price_vel = if self.last_price > 0.0 {
+            (price - self.last_price) / self.last_price
+        } else {
+            0.0
+        };
         self.last_price = price;
 
         self.vol_short.push(price_vel);
@@ -115,7 +132,11 @@ impl FeaturePipeline {
             || (self.last_funding <= 0.0 && funding_rate > 0.0);
         self.last_funding = funding_rate;
 
-        let oi_change = if self.last_oi > 0.0 { (oi - self.last_oi) / self.last_oi } else { 0.0 };
+        let oi_change = if self.last_oi > 0.0 {
+            (oi - self.last_oi) / self.last_oi
+        } else {
+            0.0
+        };
         self.last_oi = oi;
 
         let funding_p95 = self.funding.percentile(0.95);

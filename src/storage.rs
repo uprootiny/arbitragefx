@@ -9,7 +9,9 @@ pub struct StateStore {
 
 impl StateStore {
     pub fn new(path: &str) -> Result<Self> {
-        Ok(Self { conn: Connection::open(path)? })
+        Ok(Self {
+            conn: Connection::open(path)?,
+        })
     }
 
     pub fn init(&mut self) -> Result<()> {

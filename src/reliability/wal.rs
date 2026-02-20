@@ -1,8 +1,8 @@
+use serde::{Deserialize, Serialize};
+use serde_json::Value;
 use std::fs::{File, OpenOptions};
 use std::io::{BufRead, BufReader, Write};
 use std::path::Path;
-use serde::{Deserialize, Serialize};
-use serde_json::Value;
 
 #[derive(Debug)]
 pub struct Wal {
@@ -105,11 +105,11 @@ pub struct FillData {
 
 impl Wal {
     pub fn open(path: &str) -> std::io::Result<Self> {
-        let file = OpenOptions::new()
-            .create(true)
-            .append(true)
-            .open(path)?;
-        Ok(Self { file, path: path.to_string() })
+        let file = OpenOptions::new().create(true).append(true).open(path)?;
+        Ok(Self {
+            file,
+            path: path.to_string(),
+        })
     }
 
     pub fn append(&mut self, line: &str) -> std::io::Result<()> {
@@ -142,12 +142,22 @@ impl Wal {
     pub fn recover(path: &str) -> std::io::Result<RecoveryState> {
         let lines = Self::replay(path)?;
         let mut state = RecoveryState::default();
-        let mut completed_intents: std::collections::HashSet<String> = std::collections::HashSet::new();
+        let mut completed_intents: std::collections::HashSet<String> =
+            std::collections::HashSet::new();
 
         for line in lines {
             if let Ok(entry) = serde_json::from_str::<WalEntry>(&line) {
                 match entry {
-                    WalEntry::PlaceOrder { ts, intent_id, strategy_id, client_order_id, symbol, side, qty, .. } => {
+                    WalEntry::PlaceOrder {
+                        ts,
+                        intent_id,
+                        strategy_id,
+                        client_order_id,
+                        symbol,
+                        side,
+                        qty,
+                        ..
+                    } => {
                         state.pending_orders.push(PendingOrder {
                             intent_id,
                             strategy_id,
@@ -158,7 +168,14 @@ impl Wal {
                             ts,
                         });
                     }
-                    WalEntry::Fill { ts, intent_id, price, qty, fee, .. } => {
+                    WalEntry::Fill {
+                        ts,
+                        intent_id,
+                        price,
+                        qty,
+                        fee,
+                        ..
+                    } => {
                         completed_intents.insert(intent_id.clone());
                         state.fills_since_snapshot.push(FillData {
                             ts,
@@ -171,7 +188,15 @@ impl Wal {
                     WalEntry::Cancel { intent_id, .. } => {
                         completed_intents.insert(intent_id);
                     }
-                    WalEntry::Snapshot { ts, strategy_id, cash, position, entry_price, equity, pnl } => {
+                    WalEntry::Snapshot {
+                        ts,
+                        strategy_id,
+                        cash,
+                        position,
+                        entry_price,
+                        equity,
+                        pnl,
+                    } => {
                         let snap = SnapshotData {
                             ts,
                             strategy_id: strategy_id.clone(),
@@ -181,7 +206,9 @@ impl Wal {
                             equity,
                             pnl,
                         };
-                        state.snapshots_by_strategy.insert(strategy_id, snap.clone());
+                        state
+                            .snapshots_by_strategy
+                            .insert(strategy_id, snap.clone());
                         state.last_snapshot = Some(snap);
                         state.fills_since_snapshot.clear();
                     }
@@ -271,7 +298,9 @@ impl Wal {
                                 equity,
                                 pnl,
                             };
-                            state.snapshots_by_strategy.insert(strategy_id.to_string(), snap.clone());
+                            state
+                                .snapshots_by_strategy
+                                .insert(strategy_id.to_string(), snap.clone());
                             state.last_snapshot = Some(snap);
                             state.fills_since_snapshot.clear();
                         }
@@ -282,13 +311,20 @@ impl Wal {
         }
 
         // Remove completed orders from pending
-        state.pending_orders.retain(|o| !completed_intents.contains(&o.intent_id));
+        state
+            .pending_orders
+            .retain(|o| !completed_intents.contains(&o.intent_id));
 
         Ok(state)
     }
 
     /// Write a snapshot entry for state persistence
-    pub fn write_snapshot(&mut self, strategy_id: &str, portfolio: &crate::strategy::PortfolioState, pnl: f64) -> std::io::Result<()> {
+    pub fn write_snapshot(
+        &mut self,
+        strategy_id: &str,
+        portfolio: &crate::strategy::PortfolioState,
+        pnl: f64,
+    ) -> std::io::Result<()> {
         let entry = WalEntry::Snapshot {
             ts: crate::state::now_ts(),
             strategy_id: strategy_id.to_string(),
@@ -314,9 +350,9 @@ impl Wal {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::collections::hash_map::DefaultHasher;
     use std::fs;
     use std::hash::{Hash, Hasher};
-    use std::collections::hash_map::DefaultHasher;
 
     fn recovery_hash(state: &RecoveryState) -> u64 {
         let mut h = DefaultHasher::new();
@@ -371,7 +407,8 @@ mod tests {
                 side: "BUY".to_string(),
                 qty: 0.001,
                 fsync: true,
-            }).unwrap();
+            })
+            .unwrap();
 
             wal.append_entry(&WalEntry::Fill {
                 ts: 1234567891,
@@ -381,7 +418,8 @@ mod tests {
                 qty: 0.001,
                 fee: 0.05,
                 fsync: true,
-            }).unwrap();
+            })
+            .unwrap();
         }
 
         let state = Wal::recover(path).unwrap();
@@ -410,7 +448,8 @@ mod tests {
                 entry_price: 50000.0,
                 equity: 10500.0,
                 pnl: 500.0,
-            }).unwrap();
+            })
+            .unwrap();
 
             // Strategy B snapshot (different values)
             wal.append_entry(&WalEntry::Snapshot {
@@ -421,7 +460,8 @@ mod tests {
                 entry_price: 51000.0,
                 equity: 7800.0,
                 pnl: -200.0,
-            }).unwrap();
+            })
+            .unwrap();
         }
 
         let state = Wal::recover(path).unwrap();
@@ -438,7 +478,10 @@ mod tests {
         assert_eq!(snap_b.pnl, -200.0);
 
         // last_snapshot (deprecated) should be the last one written
-        assert_eq!(state.last_snapshot.as_ref().unwrap().strategy_id, "strategy_b");
+        assert_eq!(
+            state.last_snapshot.as_ref().unwrap().strategy_id,
+            "strategy_b"
+        );
 
         let _ = fs::remove_file(path);
     }
@@ -460,7 +503,8 @@ mod tests {
                 qty: 0.1,
                 fee: 0.01,
                 fsync: true,
-            }).unwrap();
+            })
+            .unwrap();
 
             // Snapshot
             wal.append_entry(&WalEntry::Snapshot {
@@ -471,7 +515,8 @@ mod tests {
                 entry_price: 0.0,
                 equity: 10000.0,
                 pnl: 0.0,
-            }).unwrap();
+            })
+            .unwrap();
 
             // Fills after snapshot (should be preserved for replay)
             wal.append_entry(&WalEntry::Fill {
@@ -482,7 +527,8 @@ mod tests {
                 qty: 0.05,
                 fee: 0.005,
                 fsync: true,
-            }).unwrap();
+            })
+            .unwrap();
 
             wal.append_entry(&WalEntry::Fill {
                 ts: 1200,
@@ -492,7 +538,8 @@ mod tests {
                 qty: 0.03,
                 fee: 0.003,
                 fsync: true,
-            }).unwrap();
+            })
+            .unwrap();
         }
 
         let state = Wal::recover(path).unwrap();
@@ -524,7 +571,8 @@ mod tests {
                 side: "BUY".to_string(),
                 qty: 0.1,
                 fsync: true,
-            }).unwrap();
+            })
+            .unwrap();
 
             // Order placed and filled
             wal.append_entry(&WalEntry::PlaceOrder {
@@ -537,7 +585,8 @@ mod tests {
                 side: "SELL".to_string(),
                 qty: 0.05,
                 fsync: true,
-            }).unwrap();
+            })
+            .unwrap();
 
             wal.append_entry(&WalEntry::Fill {
                 ts: 1002,
@@ -547,7 +596,8 @@ mod tests {
                 qty: 0.05,
                 fee: 0.005,
                 fsync: true,
-            }).unwrap();
+            })
+            .unwrap();
         }
 
         let state = Wal::recover(path).unwrap();
@@ -576,7 +626,8 @@ mod tests {
                 side: "BUY".to_string(),
                 qty: 0.1,
                 fsync: true,
-            }).unwrap();
+            })
+            .unwrap();
             wal.append_entry(&WalEntry::Snapshot {
                 ts: 1000,
                 strategy_id: "s-1".to_string(),
@@ -585,7 +636,8 @@ mod tests {
                 entry_price: 50000.0,
                 equity: 1005.0,
                 pnl: 5.0,
-            }).unwrap();
+            })
+            .unwrap();
             wal.append_entry(&WalEntry::Fill {
                 ts: 1001,
                 intent_id: "I-1".to_string(),
@@ -594,7 +646,8 @@ mod tests {
                 qty: 0.1,
                 fee: 0.01,
                 fsync: true,
-            }).unwrap();
+            })
+            .unwrap();
         }
 
         let state1 = Wal::recover(path).unwrap();

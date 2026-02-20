@@ -31,11 +31,7 @@ fn schema_accepts_good_header() {
 fn schema_rejects_bad_header() {
     let dir = TempDir::new().unwrap();
     let path = dir.path().join("bad.csv");
-    write_csv(
-        &path,
-        &["ts", "open", "high", "low"],
-        &["1000,1,2,0.5"],
-    );
+    write_csv(&path, &["ts", "open", "high", "low"], &["1000,1,2,0.5"]);
     let report = validate_schema(&path).unwrap();
     assert!(!report.ok);
 }

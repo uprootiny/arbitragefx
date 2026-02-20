@@ -4,9 +4,9 @@ use serde::Deserialize;
 use std::collections::HashMap;
 use tokio::time::{sleep, Duration};
 
-use crate::exchange::{Candle, Exchange};
 use crate::exchange::signing::sign_kraken;
-use crate::state::{Config, Fill, now_ts};
+use crate::exchange::{Candle, Exchange};
+use crate::state::{now_ts, Config, Fill};
 use crate::strategy::{Action, MarketAux};
 
 pub struct Kraken {
@@ -50,8 +50,14 @@ impl Kraken {
 
     /// Query order status to get real fill information
     async fn query_order(&self, txid: &str) -> Result<KrakenOrderInfo> {
-        let api_key = self.api_key.as_ref().ok_or_else(|| anyhow!("missing API_KEY"))?;
-        let api_secret = self.api_secret.as_ref().ok_or_else(|| anyhow!("missing API_SECRET"))?;
+        let api_key = self
+            .api_key
+            .as_ref()
+            .ok_or_else(|| anyhow!("missing API_KEY"))?;
+        let api_secret = self
+            .api_secret
+            .as_ref()
+            .ok_or_else(|| anyhow!("missing API_SECRET"))?;
 
         let nonce = Self::nonce();
         let post_data = format!("nonce={}&txid={}", nonce, txid);
@@ -62,7 +68,8 @@ impl Kraken {
 
         let url = format!("{}{}", self.base, uri_path);
 
-        let resp = self.client
+        let resp = self
+            .client
             .post(&url)
             .header("API-Key", api_key)
             .header("API-Sign", &signature)
@@ -78,7 +85,8 @@ impl Kraken {
             return Err(anyhow!("Kraken query error: {:?}", result.error));
         }
 
-        result.result
+        result
+            .result
             .and_then(|r| r.into_values().next())
             .ok_or_else(|| anyhow!("no order info"))
     }
@@ -95,7 +103,8 @@ impl Kraken {
 
             match self.query_order(txid).await {
                 Ok(info) => {
-                    if info.status == "closed" || info.vol_exec.parse::<f64>().unwrap_or(0.0) > 0.0 {
+                    if info.status == "closed" || info.vol_exec.parse::<f64>().unwrap_or(0.0) > 0.0
+                    {
                         return Ok(info);
                     }
                 }
@@ -163,7 +172,10 @@ impl Exchange for Kraken {
     async fn fetch_latest_candle(&self, symbol: &str, granularity: u64) -> Result<Candle> {
         let pair = Self::to_kraken_pair(symbol);
         let interval = Self::as_kraken_interval(granularity);
-        let url = format!("{}/0/public/OHLC?pair={}&interval={}", self.base, pair, interval);
+        let url = format!(
+            "{}/0/public/OHLC?pair={}&interval={}",
+            self.base, pair, interval
+        );
         let resp = self.client.get(&url).send().await?;
         let data: KrakenResp<serde_json::Value> = resp.json().await?;
 
@@ -172,8 +184,13 @@ impl Exchange for Kraken {
         }
 
         let result = data.result.ok_or_else(|| anyhow!("missing result"))?;
-        let arr = result.as_object().ok_or_else(|| anyhow!("invalid kraken response"))?;
-        let (_, series) = arr.iter().find(|(k, _)| *k != "last").ok_or_else(|| anyhow!("missing series"))?;
+        let arr = result
+            .as_object()
+            .ok_or_else(|| anyhow!("invalid kraken response"))?;
+        let (_, series) = arr
+            .iter()
+            .find(|(k, _)| *k != "last")
+            .ok_or_else(|| anyhow!("missing series"))?;
         let candles = series.as_array().ok_or_else(|| anyhow!("bad series"))?;
         let row = candles.last().ok_or_else(|| anyhow!("empty"))?;
         let row = row.as_array().ok_or_else(|| anyhow!("bad row"))?;
@@ -195,10 +212,11 @@ impl Exchange for Kraken {
         let ticker_url = format!("{}/0/public/Ticker?pair={}", self.base, pair);
         let (bid, ask) = match self.client.get(&ticker_url).send().await {
             Ok(resp) => {
-                let data: KrakenResp<HashMap<String, KrakenTickerInfo>> = resp.json().await.unwrap_or(KrakenResp {
-                    error: vec![],
-                    result: None,
-                });
+                let data: KrakenResp<HashMap<String, KrakenTickerInfo>> =
+                    resp.json().await.unwrap_or(KrakenResp {
+                        error: vec![],
+                        result: None,
+                    });
                 if let Some(result) = data.result {
                     if let Some(info) = result.values().next() {
                         let bid: f64 = info.b.first().and_then(|s| s.parse().ok()).unwrap_or(0.0);
@@ -228,14 +246,19 @@ impl Exchange for Kraken {
             liquidation_score: 0.0,
             stable_depeg: 0.0,
             fetch_ts: now_ts,
-            has_funding: false,  // Kraken spot doesn't have perpetual funding
-            has_borrow: spread > 0.0,  // Using spread as proxy
+            has_funding: false,       // Kraken spot doesn't have perpetual funding
+            has_borrow: spread > 0.0, // Using spread as proxy
             has_liquidations: false,
             has_depeg: false,
         })
     }
 
-    async fn execute(&self, symbol: &str, action: Action, state: &crate::strategy::StrategyState) -> Result<Fill> {
+    async fn execute(
+        &self,
+        symbol: &str,
+        action: Action,
+        state: &crate::strategy::StrategyState,
+    ) -> Result<Fill> {
         let (side, qty) = match action {
             Action::Buy { qty } => ("buy", qty),
             Action::Sell { qty } => ("sell", qty),
@@ -245,14 +268,32 @@ impl Exchange for Kraken {
                 } else if state.portfolio.position < 0.0 {
                     ("buy", state.portfolio.position.abs())
                 } else {
-                    return Ok(Fill { price: 0.0, qty: 0.0, fee: 0.0, ts: now_ts() });
+                    return Ok(Fill {
+                        price: 0.0,
+                        qty: 0.0,
+                        fee: 0.0,
+                        ts: now_ts(),
+                    });
                 }
             }
-            Action::Hold => return Ok(Fill { price: 0.0, qty: 0.0, fee: 0.0, ts: now_ts() }),
+            Action::Hold => {
+                return Ok(Fill {
+                    price: 0.0,
+                    qty: 0.0,
+                    fee: 0.0,
+                    ts: now_ts(),
+                })
+            }
         };
 
-        let api_key = self.api_key.as_ref().ok_or_else(|| anyhow!("missing API_KEY"))?;
-        let api_secret = self.api_secret.as_ref().ok_or_else(|| anyhow!("missing API_SECRET"))?;
+        let api_key = self
+            .api_key
+            .as_ref()
+            .ok_or_else(|| anyhow!("missing API_KEY"))?;
+        let api_secret = self
+            .api_secret
+            .as_ref()
+            .ok_or_else(|| anyhow!("missing API_SECRET"))?;
 
         let pair = Self::to_kraken_pair(symbol);
         let nonce = Self::nonce();
@@ -268,7 +309,8 @@ impl Exchange for Kraken {
 
         let url = format!("{}{}", self.base, uri_path);
 
-        let resp = self.client
+        let resp = self
+            .client
             .post(&url)
             .header("API-Key", api_key)
             .header("API-Sign", &signature)
@@ -290,7 +332,9 @@ impl Exchange for Kraken {
             return Err(anyhow!("Kraken order failed: {:?}", result.error));
         }
 
-        let order = result.result.ok_or_else(|| anyhow!("missing order result"))?;
+        let order = result
+            .result
+            .ok_or_else(|| anyhow!("missing order result"))?;
         let txid = order.txid.first().ok_or_else(|| anyhow!("no txid"))?;
 
         // Poll for actual fill data

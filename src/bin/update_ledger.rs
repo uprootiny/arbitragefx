@@ -89,31 +89,65 @@ fn evaluate_backtest(result: &BacktestResult, _dataset_id: &str) -> Vec<Hypothes
     let mut updates = Vec::new();
     let positive_count = result.strategies.iter().filter(|s| s.pnl > 0.0).count();
     let total = result.strategies.len();
-    let best = result.strategies.iter().max_by(|a, b| a.pnl.partial_cmp(&b.pnl).unwrap());
-    let _worst = result.strategies.iter().min_by(|a, b| a.pnl.partial_cmp(&b.pnl).unwrap());
-    let max_dd = result.strategies.iter().map(|s| s.max_drawdown).fold(0.0, f64::max);
-    let avg_friction = result.strategies.iter().map(|s| s.friction).sum::<f64>() / total.max(1) as f64;
-    let net_positive = result.strategies.iter().filter(|s| s.equity_pnl > 0.0).count();
+    let best = result
+        .strategies
+        .iter()
+        .max_by(|a, b| a.pnl.partial_cmp(&b.pnl).unwrap());
+    let _worst = result
+        .strategies
+        .iter()
+        .min_by(|a, b| a.pnl.partial_cmp(&b.pnl).unwrap());
+    let max_dd = result
+        .strategies
+        .iter()
+        .map(|s| s.max_drawdown)
+        .fold(0.0, f64::max);
+    let avg_friction =
+        result.strategies.iter().map(|s| s.friction).sum::<f64>() / total.max(1) as f64;
+    let net_positive = result
+        .strategies
+        .iter()
+        .filter(|s| s.equity_pnl > 0.0)
+        .count();
 
     // H001: Momentum generates raw alpha
     let alpha_frac = positive_count as f64 / total as f64;
     updates.push(HypothesisUpdate {
         id: "H001".into(),
-        observation: format!("{}/{} strategies positive raw PnL. Best: {:.2}", positive_count, total,
-            best.map(|b| b.pnl).unwrap_or(0.0)),
+        observation: format!(
+            "{}/{} strategies positive raw PnL. Best: {:.2}",
+            positive_count,
+            total,
+            best.map(|b| b.pnl).unwrap_or(0.0)
+        ),
         observation_strength: alpha_frac,
         evidence_weight: 0.15,
-        supports: if positive_count > total / 2 { ":partial" } else if positive_count == 0 { "false" } else { ":partial" }.into(),
+        supports: if positive_count > total / 2 {
+            ":partial"
+        } else if positive_count == 0 {
+            "false"
+        } else {
+            ":partial"
+        }
+        .into(),
     });
 
     // H002: Friction dominates alpha
     let friction_dominates = net_positive < total / 3;
     updates.push(HypothesisUpdate {
         id: "H002".into(),
-        observation: format!("{}/{} net positive after friction. Avg friction: {:.2}", net_positive, total, avg_friction),
+        observation: format!(
+            "{}/{} net positive after friction. Avg friction: {:.2}",
+            net_positive, total, avg_friction
+        ),
         observation_strength: if friction_dominates { 0.85 } else { 0.4 },
         evidence_weight: 0.15,
-        supports: if friction_dominates { "true" } else { ":partial" }.into(),
+        supports: if friction_dominates {
+            "true"
+        } else {
+            ":partial"
+        }
+        .into(),
     });
 
     // H003: Position sizing limits drawdown
@@ -157,8 +191,12 @@ fn evaluate_backtest(result: &BacktestResult, _dataset_id: &str) -> Vec<Hypothes
         let preservation = 1.0 - max_dd; // ~0.99 is great
         updates.push(HypothesisUpdate {
             id: "H009".into(),
-            observation: format!("Buy-hold: {:.2}, system max DD: {:.2}%. Preservation: {:.1}%",
-                result.buy_hold_pnl, max_dd * 100.0, preservation * 100.0),
+            observation: format!(
+                "Buy-hold: {:.2}, system max DD: {:.2}%. Preservation: {:.1}%",
+                result.buy_hold_pnl,
+                max_dd * 100.0,
+                preservation * 100.0
+            ),
             observation_strength: if preservation > 0.97 { 0.9 } else { 0.6 },
             evidence_weight: 0.15,
             supports: "true".into(),
@@ -170,15 +208,25 @@ fn evaluate_backtest(result: &BacktestResult, _dataset_id: &str) -> Vec<Hypothes
 
 fn evaluate_walk_forward(wf: &WalkForwardResult) -> Vec<HypothesisUpdate> {
     let mut updates = Vec::new();
-    let survivors = wf.summaries.iter().filter(|s| s.survives_correction).count();
+    let survivors = wf
+        .summaries
+        .iter()
+        .filter(|s| s.survives_correction)
+        .count();
     let total = wf.summaries.len();
 
     // H001: Raw alpha — does it survive walk-forward?
-    let test_positive = wf.summaries.iter().filter(|s| s.test_mean_pnl > 0.0).count();
+    let test_positive = wf
+        .summaries
+        .iter()
+        .filter(|s| s.test_mean_pnl > 0.0)
+        .count();
     updates.push(HypothesisUpdate {
         id: "H001".into(),
-        observation: format!("{}/{} strategies positive in test period, {}/{} survive Bonferroni",
-            test_positive, total, survivors, total),
+        observation: format!(
+            "{}/{} strategies positive in test period, {}/{} survive Bonferroni",
+            test_positive, total, survivors, total
+        ),
         observation_strength: test_positive as f64 / total as f64,
         evidence_weight: 0.20, // Walk-forward evidence is stronger
         supports: if survivors > 0 { ":partial" } else { "false" }.into(),
@@ -187,8 +235,10 @@ fn evaluate_walk_forward(wf: &WalkForwardResult) -> Vec<HypothesisUpdate> {
     // H007: No consistent alpha — walk-forward verdict
     updates.push(HypothesisUpdate {
         id: "H007".into(),
-        observation: format!("{}/{} survive correction ({}). {} comparisons at alpha={}",
-            survivors, total, wf.correction_method, wf.num_comparisons, wf.alpha),
+        observation: format!(
+            "{}/{} survive correction ({}). {} comparisons at alpha={}",
+            survivors, total, wf.correction_method, wf.num_comparisons, wf.alpha
+        ),
         observation_strength: if survivors == 0 { 0.95 } else { 0.3 },
         evidence_weight: 0.25,
         supports: if survivors == 0 { "true" } else { ":partial" }.into(),
@@ -198,11 +248,18 @@ fn evaluate_walk_forward(wf: &WalkForwardResult) -> Vec<HypothesisUpdate> {
     let mean_overfit = wf.summaries.iter().map(|s| s.overfit_ratio).sum::<f64>() / total as f64;
     updates.push(HypothesisUpdate {
         id: "H002".into(),
-        observation: format!("Mean overfit ratio (test/train): {:.2}. {} survive after correction.",
-            mean_overfit, survivors),
+        observation: format!(
+            "Mean overfit ratio (test/train): {:.2}. {} survive after correction.",
+            mean_overfit, survivors
+        ),
         observation_strength: if mean_overfit < 0.5 { 0.9 } else { 0.5 },
         evidence_weight: 0.20,
-        supports: if mean_overfit < 0.5 { "true" } else { ":partial" }.into(),
+        supports: if mean_overfit < 0.5 {
+            "true"
+        } else {
+            ":partial"
+        }
+        .into(),
     });
 
     updates
@@ -210,8 +267,13 @@ fn evaluate_walk_forward(wf: &WalkForwardResult) -> Vec<HypothesisUpdate> {
 
 fn main() {
     let args: Vec<String> = std::env::args().collect();
-    let json_path = args.get(1).map(|s| s.as_str()).unwrap_or("out/walk_forward/report.json");
-    let dataset_id = args.iter().position(|a| a == "--dataset-id")
+    let json_path = args
+        .get(1)
+        .map(|s| s.as_str())
+        .unwrap_or("out/walk_forward/report.json");
+    let dataset_id = args
+        .iter()
+        .position(|a| a == "--dataset-id")
         .and_then(|i| args.get(i + 1))
         .map(|s| s.as_str())
         .unwrap_or("auto");
@@ -220,14 +282,23 @@ fn main() {
 
     // Try to parse as WalkForwardResult first, then BacktestResult
     let updates = if let Ok(wf) = serde_json::from_str::<WalkForwardResult>(&content) {
-        println!("Parsed walk-forward result: {} strategies, {} windows", wf.num_strategies, wf.num_windows);
+        println!(
+            "Parsed walk-forward result: {} strategies, {} windows",
+            wf.num_strategies, wf.num_windows
+        );
         evaluate_walk_forward(&wf)
     } else if let Ok(bt) = serde_json::from_str::<BacktestResult>(&content) {
-        println!("Parsed backtest result: {} strategies, {} candles",
-            bt.strategies.len(), bt.candle_count.unwrap_or(0));
+        println!(
+            "Parsed backtest result: {} strategies, {} candles",
+            bt.strategies.len(),
+            bt.candle_count.unwrap_or(0)
+        );
         evaluate_backtest(&bt, dataset_id)
     } else {
-        eprintln!("Could not parse {} as BacktestResult or WalkForwardResult", json_path);
+        eprintln!(
+            "Could not parse {} as BacktestResult or WalkForwardResult",
+            json_path
+        );
         std::process::exit(1);
     };
 
@@ -236,7 +307,10 @@ fn main() {
     println!("==================");
     for u in &updates {
         println!();
-        println!("  {} [supports: {}] (weight: {:.2})", u.id, u.supports, u.evidence_weight);
+        println!(
+            "  {} [supports: {}] (weight: {:.2})",
+            u.id, u.supports, u.evidence_weight
+        );
         println!("  observation: {}", u.observation);
         println!("  observation_strength: {:.2}", u.observation_strength);
     }
@@ -252,7 +326,10 @@ fn main() {
             let t = line.trim();
             if t.contains(":id \"H") && !t.contains(":id :") {
                 let id_start = t.find(":id \"").unwrap_or(0) + 5;
-                let id_end = t[id_start..].find('"').map(|i| id_start + i).unwrap_or(t.len());
+                let id_end = t[id_start..]
+                    .find('"')
+                    .map(|i| id_start + i)
+                    .unwrap_or(t.len());
                 current_id = t[id_start..id_end].to_string();
             }
             if t.starts_with(":current (stv") {
@@ -261,18 +338,30 @@ fn main() {
                 if parts.len() >= 2 {
                     let s: f64 = parts[0].parse().unwrap_or(0.0);
                     let c: f64 = parts[1].parse().unwrap_or(0.0);
-                    current_stvs.push((current_id.clone(), Stv { strength: s, confidence: c }));
+                    current_stvs.push((
+                        current_id.clone(),
+                        Stv {
+                            strength: s,
+                            confidence: c,
+                        },
+                    ));
                 }
             }
         }
 
         println!();
-        println!("  {:<8} {:>12} {:>12} {:>12} {:>12}", "ID", "Old S", "New S", "Old C", "New C");
+        println!(
+            "  {:<8} {:>12} {:>12} {:>12} {:>12}",
+            "ID", "Old S", "New S", "Old C", "New C"
+        );
         println!("  {}", "-".repeat(60));
         for (id, stv) in &current_stvs {
             let matching_updates: Vec<_> = updates.iter().filter(|u| u.id == *id).collect();
             if matching_updates.is_empty() {
-                println!("  {:<8} {:>12.4} {:>12} {:>12.4} {:>12}", id, stv.strength, "(no update)", stv.confidence, "");
+                println!(
+                    "  {:<8} {:>12.4} {:>12} {:>12.4} {:>12}",
+                    id, stv.strength, "(no update)", stv.confidence, ""
+                );
             } else {
                 let mut current = stv.clone();
                 for u in &matching_updates {
@@ -280,9 +369,16 @@ fn main() {
                 }
                 let s_delta = current.strength - stv.strength;
                 let c_delta = current.confidence - stv.confidence;
-                println!("  {:<8} {:>12.4} {:>12.4} {:>12.4} {:>12.4}  (S {:+.4}, C {:+.4})",
-                    id, stv.strength, current.strength, stv.confidence, current.confidence,
-                    s_delta, c_delta);
+                println!(
+                    "  {:<8} {:>12.4} {:>12.4} {:>12.4} {:>12.4}  (S {:+.4}, C {:+.4})",
+                    id,
+                    stv.strength,
+                    current.strength,
+                    stv.confidence,
+                    current.confidence,
+                    s_delta,
+                    c_delta
+                );
             }
         }
 

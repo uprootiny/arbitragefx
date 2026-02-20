@@ -94,7 +94,9 @@ pub fn walk_forward(
     train_fraction: f64,
 ) -> Result<WalkForwardResult> {
     if rows.len() < 100 {
-        return Err(anyhow::anyhow!("too few rows for walk-forward (need >= 100)"));
+        return Err(anyhow::anyhow!(
+            "too few rows for walk-forward (need >= 100)"
+        ));
     }
     let num_windows = num_windows.max(1);
     let window_size = rows.len() * 2 / (num_windows + 1);
@@ -137,7 +139,10 @@ pub fn walk_forward(
 
     let mut summaries = Vec::new();
     for s_idx in 0..num_strats {
-        let id = windows[0].test.strategies.get(s_idx)
+        let id = windows[0]
+            .test
+            .strategies
+            .get(s_idx)
             .map(|s| s.id.clone())
             .unwrap_or_else(|| format!("strategy-{}", s_idx));
 
@@ -209,7 +214,8 @@ mod tests {
 
     fn load_rows(path: &str) -> Vec<CsvRow> {
         let content = std::fs::read_to_string(path).unwrap();
-        content.lines()
+        content
+            .lines()
             .filter(|l| !l.starts_with("ts") && !l.starts_with('#') && !l.is_empty())
             .filter_map(|l| crate::backtest::parse_csv_line(l).ok())
             .collect()
@@ -217,10 +223,21 @@ mod tests {
 
     #[test]
     fn test_train_test_split_proportions() {
-        let rows: Vec<CsvRow> = (0..100).map(|i| CsvRow {
-            ts: 1000 + i * 300, o: 100.0, h: 101.0, l: 99.0, c: 100.0,
-            v: 1000.0, funding: 0.0, borrow: 0.0, liq: 0.0, depeg: 0.0, oi: 0.0,
-        }).collect();
+        let rows: Vec<CsvRow> = (0..100)
+            .map(|i| CsvRow {
+                ts: 1000 + i * 300,
+                o: 100.0,
+                h: 101.0,
+                l: 99.0,
+                c: 100.0,
+                v: 1000.0,
+                funding: 0.0,
+                borrow: 0.0,
+                liq: 0.0,
+                depeg: 0.0,
+                oi: 0.0,
+            })
+            .collect();
         let (train, test) = train_test_split(&rows, 0.7);
         assert_eq!(train.len(), 70);
         assert_eq!(test.len(), 30);
@@ -228,10 +245,21 @@ mod tests {
 
     #[test]
     fn test_train_test_split_edge_cases() {
-        let rows: Vec<CsvRow> = (0..10).map(|i| CsvRow {
-            ts: 1000 + i * 300, o: 100.0, h: 101.0, l: 99.0, c: 100.0,
-            v: 1000.0, funding: 0.0, borrow: 0.0, liq: 0.0, depeg: 0.0, oi: 0.0,
-        }).collect();
+        let rows: Vec<CsvRow> = (0..10)
+            .map(|i| CsvRow {
+                ts: 1000 + i * 300,
+                o: 100.0,
+                h: 101.0,
+                l: 99.0,
+                c: 100.0,
+                v: 1000.0,
+                funding: 0.0,
+                borrow: 0.0,
+                liq: 0.0,
+                depeg: 0.0,
+                oi: 0.0,
+            })
+            .collect();
         let (train, test) = train_test_split(&rows, 1.0);
         assert_eq!(train.len(), 10);
         assert_eq!(test.len(), 0);
@@ -266,7 +294,11 @@ mod tests {
         let cfg = Config::from_env();
         let result = walk_forward(cfg, &rows, 3, 0.7).unwrap();
         assert!(result.windows.len() >= 2, "should have at least 2 windows");
-        assert_eq!(result.summaries.len(), 12, "should have 12 strategy summaries");
+        assert_eq!(
+            result.summaries.len(),
+            12,
+            "should have 12 strategy summaries"
+        );
         assert_eq!(result.correction_method, "Bonferroni");
         // With 12 strategies and 3 windows, num_comparisons should be 36
         assert!(result.num_comparisons > 0);
@@ -274,7 +306,11 @@ mod tests {
             assert!(s.total_windows > 0);
             assert!(s.p_value >= 0.0 && s.p_value <= 1.0);
             // Overfit ratio: test/train. Could be negative, but should be finite.
-            assert!(s.overfit_ratio.is_finite(), "{} overfit ratio not finite", s.id);
+            assert!(
+                s.overfit_ratio.is_finite(),
+                "{} overfit ratio not finite",
+                s.id
+            );
         }
     }
 

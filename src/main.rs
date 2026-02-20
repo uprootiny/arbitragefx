@@ -1,38 +1,38 @@
+mod adapter;
 mod drift_tracker;
 mod exchange;
+mod feed;
+mod live_ops;
+mod logging;
 mod metrics;
+mod reconcile;
+mod reliability;
 mod risk;
 mod state;
 mod storage;
 mod strategy;
-mod logging;
-mod reliability;
-mod adapter;
-mod feed;
 mod verify;
-mod reconcile;
-mod live_ops;
 
-use anyhow::Result;
-use chrono::Utc;
-use logging::{json_log, obj, params_hash, v_num, v_str, ProfileScope};
-use reliability::{circuit::CircuitBreaker, state::OrderBook, wal::Wal};
-use adapter::unified::UnifiedAdapter;
+use crate::drift_tracker::DriftTracker;
 use adapter::binance::BinanceAdapter;
 use adapter::types;
-use exchange::{Exchange, ExchangeKind};
+use adapter::unified::UnifiedAdapter;
+use anyhow::Result;
+use chrono::Utc;
 use exchange::retry::{retry_async, RetryConfig};
+use exchange::{Exchange, ExchangeKind};
 use feed::aux_data::AuxDataFetcher;
+use live_ops::PendingMeta;
+use logging::{json_log, obj, params_hash, v_num, v_str, ProfileScope};
 use metrics::MetricsEngine;
+use reliability::{circuit::CircuitBreaker, state::OrderBook, wal::Wal};
 use risk::RiskEngine;
 use state::{MarketState, StrategyInstance};
+use std::collections::HashMap;
 use storage::StateStore;
 use strategy::{Action, Strategy};
-use tokio::time::{sleep, Duration};
 use tokio::sync::mpsc;
-use std::collections::HashMap;
-use live_ops::PendingMeta;
-use crate::drift_tracker::DriftTracker;
+use tokio::time::{sleep, Duration};
 
 fn now_ts() -> u64 {
     Utc::now().timestamp() as u64
@@ -55,11 +55,17 @@ async fn main() -> Result<()> {
     let live_adapter = matches!((&cfg.api_key, &cfg.api_secret), (Some(_), Some(_)));
     let mut adapter: Box<dyn UnifiedAdapter> = match (&cfg.api_key, &cfg.api_secret) {
         (Some(key), Some(secret)) => {
-            json_log("adapter", obj(&[("type", v_str("binance")), ("status", v_str("live"))]));
+            json_log(
+                "adapter",
+                obj(&[("type", v_str("binance")), ("status", v_str("live"))]),
+            );
             Box::new(BinanceAdapter::new(key.clone(), secret.clone()))
         }
         _ => {
-            json_log("adapter", obj(&[("type", v_str("null")), ("status", v_str("stub"))]));
+            json_log(
+                "adapter",
+                obj(&[("type", v_str("null")), ("status", v_str("stub"))]),
+            );
             Box::new(adapter::unified::NullAdapter)
         }
     };
@@ -85,7 +91,8 @@ async fn main() -> Result<()> {
         );
     }
     for pending in &recovery.pending_orders {
-        if let (Some(client_id), Some(strategy_id)) = (&pending.client_order_id, &pending.strategy_id)
+        if let (Some(client_id), Some(strategy_id)) =
+            (&pending.client_order_id, &pending.strategy_id)
         {
             pending_by_client.insert(
                 client_id.clone(),
@@ -165,8 +172,12 @@ async fn main() -> Result<()> {
                     base,
                     symbol,
                     poll_tx,
-                    std::env::var("POLL_SECS").ok().and_then(|v| v.parse().ok()).unwrap_or(15),
-                ).await;
+                    std::env::var("POLL_SECS")
+                        .ok()
+                        .and_then(|v| v.parse().ok())
+                        .unwrap_or(15),
+                )
+                .await;
             });
         }
     }
@@ -198,7 +209,8 @@ async fn main() -> Result<()> {
         let _candle_prof = ProfileScope::new("profile", "fetch_candle");
         let candle = retry_async(&retry_cfg, "fetch_candle", || {
             exchange.fetch_latest_candle(&cfg.symbol, cfg.candle_granularity)
-        }).await?;
+        })
+        .await?;
 
         market.on_candle(candle);
 
@@ -317,14 +329,12 @@ async fn main() -> Result<()> {
             if let Action::Hold = guarded {
                 json_log(
                     "risk_guard",
-                    obj(&[
-                        ("check", v_str("guarded")),
-                        ("result", v_str("fail")),
-                    ]),
+                    obj(&[("check", v_str("guarded")), ("result", v_str("fail"))]),
                 );
             } else {
                 let exposure = if inst.state.portfolio.equity.abs() > 0.0 {
-                    (inst.state.portfolio.position * view.last.c).abs() / inst.state.portfolio.equity.abs()
+                    (inst.state.portfolio.position * view.last.c).abs()
+                        / inst.state.portfolio.equity.abs()
                 } else {
                     0.0
                 };
@@ -428,7 +438,10 @@ async fn main() -> Result<()> {
                     obj(&[
                         ("intent_id", v_str(&intent_id)),
                         ("action", v_str("place_order")),
-                        ("venue", v_str(&format!("{:?}", ExchangeKind::from_env()).to_lowercase())),
+                        (
+                            "venue",
+                            v_str(&format!("{:?}", ExchangeKind::from_env()).to_lowercase()),
+                        ),
                         ("client_order_id", v_str(&client_id)),
                         ("attempt", v_num(1.0)),
                         ("status", v_str("request_sent")),
@@ -451,7 +464,11 @@ async fn main() -> Result<()> {
                 } else {
                     types::OrderType::Limit
                 };
-                let price = if live_adapter { None } else { Some(view.last.c) };
+                let price = if live_adapter {
+                    None
+                } else {
+                    Some(view.last.c)
+                };
                 let resp = adapter.place_order(types::OrderRequest {
                     symbol: cfg.symbol.clone(),
                     side,
@@ -467,7 +484,9 @@ async fn main() -> Result<()> {
                         }
                         if let Ok((prev, next)) = order_book.apply(
                             &client_id,
-                            crate::verify::order_sm::Event::Ack { order_id: resp.order_id.clone() },
+                            crate::verify::order_sm::Event::Ack {
+                                order_id: resp.order_id.clone(),
+                            },
                         ) {
                             json_log(
                                 "order_state",
@@ -492,7 +511,9 @@ async fn main() -> Result<()> {
                     Err(err) => {
                         let _ = order_book.apply(
                             &client_id,
-                            crate::verify::order_sm::Event::Reject { reason: err.clone() },
+                            crate::verify::order_sm::Event::Reject {
+                                reason: err.clone(),
+                            },
                         );
                         pending_by_client.remove(&client_id);
                         circuit.record_failure();
@@ -525,7 +546,8 @@ async fn main() -> Result<()> {
                     let _exec_prof = ProfileScope::new("profile", "execute_order");
                     let fill = retry_async(&retry_cfg, "execute_order", || {
                         exchange.execute(&cfg.symbol, guarded, &inst.state)
-                    }).await?;
+                    })
+                    .await?;
 
                     if view.last.c > 0.0 {
                         let slip_pct = ((fill.price - view.last.c).abs()) / view.last.c;
@@ -654,9 +676,18 @@ async fn main() -> Result<()> {
             json_log(
                 "reconcile",
                 obj(&[
-                    ("venue", v_str(&format!("{:?}", ExchangeKind::from_env()).to_lowercase())),
-                    ("local_position", v_num(strategies[0].state.portfolio.position)),
-                    ("exchange_position", v_num(strategies[0].state.portfolio.position)),
+                    (
+                        "venue",
+                        v_str(&format!("{:?}", ExchangeKind::from_env()).to_lowercase()),
+                    ),
+                    (
+                        "local_position",
+                        v_num(strategies[0].state.portfolio.position),
+                    ),
+                    (
+                        "exchange_position",
+                        v_num(strategies[0].state.portfolio.position),
+                    ),
                     ("status", v_str("match")),
                 ]),
             );

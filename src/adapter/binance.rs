@@ -1,9 +1,9 @@
 use reqwest::Client;
 use serde::Deserialize;
 
-use crate::exchange::signing::sign_binance;
-use super::types::{OrderRequest, OrderResponse, Side, OrderType};
+use super::types::{OrderRequest, OrderResponse, OrderType, Side};
 use super::unified::UnifiedAdapter;
+use crate::exchange::signing::sign_binance;
 
 pub struct BinanceAdapter {
     client: Client,
@@ -52,12 +52,13 @@ impl BinanceAdapter {
             query.push_str(&format!("&price={:.8}&timeInForce=GTC", price));
         }
 
-        let signature = sign_binance(&query, &self.api_secret)
-            .map_err(|e| format!("signing failed: {}", e))?;
+        let signature =
+            sign_binance(&query, &self.api_secret).map_err(|e| format!("signing failed: {}", e))?;
         let signed_query = format!("{}&signature={}", query, signature);
         let url = format!("{}/api/v3/order?{}", self.base, signed_query);
 
-        let resp = self.client
+        let resp = self
+            .client
             .post(&url)
             .header("X-MBX-APIKEY", &self.api_key)
             .send()
@@ -65,13 +66,21 @@ impl BinanceAdapter {
             .map_err(|e| format!("request failed: {}", e))?;
 
         let status = resp.status();
-        let body = resp.text().await.map_err(|e| format!("read body failed: {}", e))?;
+        let body = resp
+            .text()
+            .await
+            .map_err(|e| format!("read body failed: {}", e))?;
 
         if !status.is_success() {
             #[derive(Deserialize)]
-            struct BinanceError { code: i64, msg: String }
-            let err: BinanceError = serde_json::from_str(&body)
-                .unwrap_or(BinanceError { code: -1, msg: body.clone() });
+            struct BinanceError {
+                code: i64,
+                msg: String,
+            }
+            let err: BinanceError = serde_json::from_str(&body).unwrap_or(BinanceError {
+                code: -1,
+                msg: body.clone(),
+            });
             return Err(format!("Binance error {}: {}", err.code, err.msg));
         }
 
@@ -82,8 +91,8 @@ impl BinanceAdapter {
             status: String,
         }
 
-        let order: BinanceNewOrder = serde_json::from_str(&body)
-            .map_err(|e| format!("parse error: {}", e))?;
+        let order: BinanceNewOrder =
+            serde_json::from_str(&body).map_err(|e| format!("parse error: {}", e))?;
 
         Ok(OrderResponse {
             order_id: order.order_id.to_string(),
@@ -100,12 +109,13 @@ impl BinanceAdapter {
             symbol, order_id, timestamp
         );
 
-        let signature = sign_binance(&query, &self.api_secret)
-            .map_err(|e| format!("signing failed: {}", e))?;
+        let signature =
+            sign_binance(&query, &self.api_secret).map_err(|e| format!("signing failed: {}", e))?;
         let signed_query = format!("{}&signature={}", query, signature);
         let url = format!("{}/api/v3/order?{}", self.base, signed_query);
 
-        let resp = self.client
+        let resp = self
+            .client
             .delete(&url)
             .header("X-MBX-APIKEY", &self.api_key)
             .send()
@@ -124,17 +134,15 @@ impl BinanceAdapter {
         let timestamp = Self::timestamp_ms();
         let symbol = std::env::var("SYMBOL").unwrap_or_else(|_| "BTCUSDT".to_string());
 
-        let query = format!(
-            "symbol={}&timestamp={}&recvWindow=5000",
-            symbol, timestamp
-        );
+        let query = format!("symbol={}&timestamp={}&recvWindow=5000", symbol, timestamp);
 
-        let signature = sign_binance(&query, &self.api_secret)
-            .map_err(|e| format!("signing failed: {}", e))?;
+        let signature =
+            sign_binance(&query, &self.api_secret).map_err(|e| format!("signing failed: {}", e))?;
         let signed_query = format!("{}&signature={}", query, signature);
         let url = format!("{}/api/v3/openOrders?{}", self.base, signed_query);
 
-        let resp = self.client
+        let resp = self
+            .client
             .delete(&url)
             .header("X-MBX-APIKEY", &self.api_key)
             .send()

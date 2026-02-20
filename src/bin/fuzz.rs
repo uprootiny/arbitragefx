@@ -26,7 +26,10 @@ fn main() {
     for _ in 0..events {
         let roll = pick(&mut seed, 100);
         if roll < 15 && !order_id_emitted {
-            println!(r#"{{"type":"Ack","order_id":"oid-{}"}}"#, pick(&mut seed, 9999));
+            println!(
+                r#"{{"type":"Ack","order_id":"oid-{}"}}"#,
+                pick(&mut seed, 9999)
+            );
             order_id_emitted = true;
         } else if roll < 60 {
             let dup = pick(&mut seed, 10) < 2;

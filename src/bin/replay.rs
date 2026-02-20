@@ -12,18 +12,32 @@ use arbitragefx::verify::order_sm::{apply_event, Event, Order, OrderState};
 #[serde(tag = "type")]
 enum InputEvent {
     Submit,
-    Ack { order_id: String },
-    Fill { fill_id: String, qty: f64, price: f64, ts: u64 },
+    Ack {
+        order_id: String,
+    },
+    Fill {
+        fill_id: String,
+        qty: f64,
+        price: f64,
+        ts: u64,
+    },
     CancelRequest,
     CancelAck,
-    Reject { reason: String },
+    Reject {
+        reason: String,
+    },
     Timeout,
 }
 
 fn main() {
     let stdin = io::stdin();
     let mut order = Order::new("client-1".to_string(), 1.0);
-    let mut portfolio = PortfolioState { cash: 1000.0, position: 0.0, entry_price: 0.0, equity: 1000.0 };
+    let mut portfolio = PortfolioState {
+        cash: 1000.0,
+        position: 0.0,
+        entry_price: 0.0,
+        equity: 1000.0,
+    };
     let mut seen = HashSet::new();
 
     for line in stdin.lock().lines().flatten() {
@@ -42,11 +56,25 @@ fn main() {
         let event = match evt {
             InputEvent::Submit => Event::Submit,
             InputEvent::Ack { order_id } => Event::Ack { order_id },
-            InputEvent::Fill { fill_id, qty, price, ts } => {
-                let fill = Fill { price, qty, fee: 0.0, ts };
+            InputEvent::Fill {
+                fill_id,
+                qty,
+                price,
+                ts,
+            } => {
+                let fill = Fill {
+                    price,
+                    qty,
+                    fee: 0.0,
+                    ts,
+                };
                 let _ = apply_fill_idempotent(&mut portfolio, fill, &mut seen, &fill_id);
                 mark_price = Some(price);
-                Event::Fill { fill_id, qty, price }
+                Event::Fill {
+                    fill_id,
+                    qty,
+                    price,
+                }
             }
             InputEvent::CancelRequest => Event::CancelRequest,
             InputEvent::CancelAck => Event::CancelAck,
@@ -70,5 +98,8 @@ fn main() {
         OrderState::Canceled => "Canceled",
         OrderState::Rejected => "Rejected",
     };
-    println!("order_state={state} filled_qty={} equity={}", order.filled_qty, portfolio.equity);
+    println!(
+        "order_state={state} filled_qty={} equity={}",
+        order.filled_qty, portfolio.equity
+    );
 }

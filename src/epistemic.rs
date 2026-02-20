@@ -184,22 +184,54 @@ impl EpistemicState {
 
         // Dataflows — the actual backtest pipeline
         state.dataflows = vec![
-            DataFlow { from: "csv_files".into(), to: "parse_csv_line".into(),
-                       level: EpistemicLevel::Verified, transform: Some("parse".into()) },
-            DataFlow { from: "parse_csv_line".into(), to: "MarketState".into(),
-                       level: EpistemicLevel::Verified, transform: Some("on_candle".into()) },
-            DataFlow { from: "MarketState".into(), to: "IndicatorState".into(),
-                       level: EpistemicLevel::Verified, transform: Some("update".into()) },
-            DataFlow { from: "IndicatorState".into(), to: "SimpleMomentum".into(),
-                       level: EpistemicLevel::Verified, transform: Some("z_scores".into()) },
-            DataFlow { from: "SimpleMomentum".into(), to: "RiskEngine".into(),
-                       level: EpistemicLevel::Verified, transform: Some("apply_with_price".into()) },
-            DataFlow { from: "RiskEngine".into(), to: "PendingOrder".into(),
-                       level: EpistemicLevel::Verified, transform: Some("order_queue".into()) },
-            DataFlow { from: "PendingOrder".into(), to: "fill".into(),
-                       level: EpistemicLevel::Verified, transform: Some("latency+slippage+fill".into()) },
-            DataFlow { from: "fill".into(), to: "BacktestResult".into(),
-                       level: EpistemicLevel::Verified, transform: Some("aggregate".into()) },
+            DataFlow {
+                from: "csv_files".into(),
+                to: "parse_csv_line".into(),
+                level: EpistemicLevel::Verified,
+                transform: Some("parse".into()),
+            },
+            DataFlow {
+                from: "parse_csv_line".into(),
+                to: "MarketState".into(),
+                level: EpistemicLevel::Verified,
+                transform: Some("on_candle".into()),
+            },
+            DataFlow {
+                from: "MarketState".into(),
+                to: "IndicatorState".into(),
+                level: EpistemicLevel::Verified,
+                transform: Some("update".into()),
+            },
+            DataFlow {
+                from: "IndicatorState".into(),
+                to: "SimpleMomentum".into(),
+                level: EpistemicLevel::Verified,
+                transform: Some("z_scores".into()),
+            },
+            DataFlow {
+                from: "SimpleMomentum".into(),
+                to: "RiskEngine".into(),
+                level: EpistemicLevel::Verified,
+                transform: Some("apply_with_price".into()),
+            },
+            DataFlow {
+                from: "RiskEngine".into(),
+                to: "PendingOrder".into(),
+                level: EpistemicLevel::Verified,
+                transform: Some("order_queue".into()),
+            },
+            DataFlow {
+                from: "PendingOrder".into(),
+                to: "fill".into(),
+                level: EpistemicLevel::Verified,
+                transform: Some("latency+slippage+fill".into()),
+            },
+            DataFlow {
+                from: "fill".into(),
+                to: "BacktestResult".into(),
+                level: EpistemicLevel::Verified,
+                transform: Some("aggregate".into()),
+            },
         ];
 
         // Invariants — checked by tests
@@ -245,7 +277,10 @@ impl EpistemicState {
             },
             EpistemicNode {
                 id: "data_representativeness".into(),
-                name: format!("{} regime datasets represent real market conditions", data_files),
+                name: format!(
+                    "{} regime datasets represent real market conditions",
+                    data_files
+                ),
                 level: EpistemicLevel::Verified,
                 confidence: 0.75,
                 source_file: None,
@@ -327,17 +362,24 @@ impl EpistemicState {
 
             // Match {:id "H001" or :id "H001"
             if (trimmed.starts_with("{:id \"H") || trimmed.starts_with(":id \"H"))
-                && !trimmed.contains(":id :") // skip dataset :id lines like {:id :markdown-1
+                && !trimmed.contains(":id :")
+            // skip dataset :id lines like {:id :markdown-1
             {
                 if in_hypothesis && !current_id.is_empty() {
                     hypotheses.push(Self::make_hypothesis_node(
-                        &current_id, &current_name, current_strength,
-                        current_confidence, &current_assessment,
+                        &current_id,
+                        &current_name,
+                        current_strength,
+                        current_confidence,
+                        &current_assessment,
                     ));
                 }
                 // Extract H-id from either {:id "H001" or :id "H001"
                 let id_start = trimmed.find(":id \"").unwrap_or(0) + 5;
-                let id_end = trimmed[id_start..].find('"').map(|i| id_start + i).unwrap_or(trimmed.len());
+                let id_end = trimmed[id_start..]
+                    .find('"')
+                    .map(|i| id_start + i)
+                    .unwrap_or(trimmed.len());
                 current_id = trimmed[id_start..id_end].to_string();
                 current_name.clear();
                 current_assessment.clear();
@@ -376,15 +418,24 @@ impl EpistemicState {
         // Don't forget the last hypothesis
         if in_hypothesis && !current_id.is_empty() {
             hypotheses.push(Self::make_hypothesis_node(
-                &current_id, &current_name, current_strength,
-                current_confidence, &current_assessment,
+                &current_id,
+                &current_name,
+                current_strength,
+                current_confidence,
+                &current_assessment,
             ));
         }
 
         hypotheses
     }
 
-    fn make_hypothesis_node(id: &str, name: &str, strength: f64, confidence: f64, _assessment: &str) -> EpistemicNode {
+    fn make_hypothesis_node(
+        id: &str,
+        name: &str,
+        strength: f64,
+        confidence: f64,
+        _assessment: &str,
+    ) -> EpistemicNode {
         let level = if confidence >= 0.75 && strength >= 0.80 {
             EpistemicLevel::Verified
         } else if confidence >= 0.50 {

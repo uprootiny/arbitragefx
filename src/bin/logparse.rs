@@ -242,7 +242,10 @@ fn cmd_replay(path: &PathBuf) {
                 checkpoints += 1;
             }
             let sid = e.strategy_id.clone().or_else(|| {
-                e.data.get("strategy_id").and_then(|v| v.as_str()).map(|s| s.to_string())
+                e.data
+                    .get("strategy_id")
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.to_string())
             });
             if let Some(sid) = sid {
                 if let Some(prev_hash) = state_hashes.get(&sid) {
@@ -313,17 +316,23 @@ fn cmd_audit(path: &PathBuf) {
     }
 
     // Verify checkpoint-to-checkpoint integrity
-    let checkpoints: Vec<_> = entries
-        .iter()
-        .filter(|e| e.event == "checkpoint")
-        .collect();
+    let checkpoints: Vec<_> = entries.iter().filter(|e| e.event == "checkpoint").collect();
 
     if checkpoints.len() >= 2 {
         println!("\nCheckpoint chain:");
         for (i, cp) in checkpoints.iter().take(5).enumerate() {
-            let hash = cp.data.get("state_hash").and_then(|v| v.as_str()).unwrap_or("?");
+            let hash = cp
+                .data
+                .get("state_hash")
+                .and_then(|v| v.as_str())
+                .unwrap_or("?");
             let pnl = cp.data.get("pnl").and_then(|v| v.as_f64()).unwrap_or(0.0);
-            println!("  #{}: hash={} pnl={:.2}", i + 1, &hash[..16.min(hash.len())], pnl);
+            println!(
+                "  #{}: hash={} pnl={:.2}",
+                i + 1,
+                &hash[..16.min(hash.len())],
+                pnl
+            );
         }
         if checkpoints.len() > 5 {
             println!("  ... and {} more", checkpoints.len() - 5);
@@ -365,7 +374,11 @@ fn cmd_agent(path: &PathBuf) {
         println!("\n--- Recent Decisions ---");
         for d in decisions.iter().rev().take(5) {
             let intent = d.data.get("intent").and_then(|v| v.as_str()).unwrap_or("?");
-            let conf = d.data.get("confidence").and_then(|v| v.as_f64()).unwrap_or(0.0);
+            let conf = d
+                .data
+                .get("confidence")
+                .and_then(|v| v.as_f64())
+                .unwrap_or(0.0);
             let reason = d.data.get("reason").and_then(|v| v.as_str()).unwrap_or("?");
             println!("  {} (conf={:.2}): {}", intent, conf, reason);
         }

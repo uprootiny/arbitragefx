@@ -1,8 +1,10 @@
 use std::collections::HashMap;
 
 use crate::exchange::Candle as ExCandle;
-use crate::strategy::{IndicatorSnapshot, MarketAux, MarketView, MetricsState, PortfolioState, Strategy, StrategyState};
-use serde::{Serialize, Deserialize};
+use crate::strategy::{
+    IndicatorSnapshot, MarketAux, MarketView, MetricsState, PortfolioState, Strategy, StrategyState,
+};
+use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Serialize, Deserialize)]
 pub struct Config {
@@ -60,52 +62,169 @@ impl Config {
     pub fn from_env() -> Self {
         Self {
             symbol: std::env::var("SYMBOL").unwrap_or_else(|_| "BTCUSDT".to_string()),
-            candle_granularity: std::env::var("CANDLE_SECS").ok().and_then(|v| v.parse().ok()).unwrap_or(300),
-            window: std::env::var("WINDOW").ok().and_then(|v| v.parse().ok()).unwrap_or(500),
+            candle_granularity: std::env::var("CANDLE_SECS")
+                .ok()
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(300),
+            window: std::env::var("WINDOW")
+                .ok()
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(500),
             api_key: std::env::var("API_KEY").ok(),
             api_secret: std::env::var("API_SECRET").ok(),
-            binance_base: std::env::var("BINANCE_BASE").unwrap_or_else(|_| "https://api.binance.com".to_string()),
-            binance_fapi_base: std::env::var("BINANCE_FAPI_BASE").unwrap_or_else(|_| "https://fapi.binance.com".to_string()),
-            kraken_base: std::env::var("KRAKEN_BASE").unwrap_or_else(|_| "https://api.kraken.com".to_string()),
-            sqlite_path: std::env::var("SQLITE_PATH").unwrap_or_else(|_| "./bot.sqlite".to_string()),
-            persist_every_secs: std::env::var("PERSIST_SECS").ok().and_then(|v| v.parse().ok()).unwrap_or(300),
-            max_position_pct: std::env::var("MAX_POS_PCT").ok().and_then(|v| v.parse().ok()).unwrap_or(0.05),
-            max_daily_loss_pct: std::env::var("MAX_DAILY_LOSS_PCT").ok().and_then(|v| v.parse().ok()).unwrap_or(0.02),
-            max_trades_per_day: std::env::var("MAX_TRADES_DAY").ok().and_then(|v| v.parse().ok()).unwrap_or(20),
-            cooldown_secs: std::env::var("COOLDOWN_SECS").ok().and_then(|v| v.parse().ok()).unwrap_or(600),
-            vol_pause_mult: std::env::var("VOL_PAUSE_MULT").ok().and_then(|v| v.parse().ok()).unwrap_or(2.5),
-            entry_threshold: std::env::var("ENTRY_TH").ok().and_then(|v| v.parse().ok()).unwrap_or(1.2),
-            exit_threshold: std::env::var("EXIT_TH").ok().and_then(|v| v.parse().ok()).unwrap_or(0.4),
-            breakout_threshold: std::env::var("BREAKOUT_TH").ok().and_then(|v| v.parse().ok()).unwrap_or(2.0),
-            edge_hurdle: std::env::var("EDGE_HURDLE").ok().and_then(|v| v.parse().ok()).unwrap_or(0.003),
-            edge_scale: std::env::var("EDGE_SCALE").ok().and_then(|v| v.parse().ok()).unwrap_or(0.0025),
-            ema_fast: std::env::var("EMA_FAST").ok().and_then(|v| v.parse().ok()).unwrap_or(6),
-            ema_slow: std::env::var("EMA_SLOW").ok().and_then(|v| v.parse().ok()).unwrap_or(24),
-            vol_window: std::env::var("VOL_WINDOW").ok().and_then(|v| v.parse().ok()).unwrap_or(30),
-            volume_window: std::env::var("VOL_MEAN_WINDOW").ok().and_then(|v| v.parse().ok()).unwrap_or(30),
-            take_profit: std::env::var("TAKE_PROFIT").ok().and_then(|v| v.parse().ok()).unwrap_or(0.006),
-            stop_loss: std::env::var("STOP_LOSS").ok().and_then(|v| v.parse().ok()).unwrap_or(0.004),
-            time_stop: std::env::var("TIME_STOP").ok().and_then(|v| v.parse().ok()).unwrap_or(12),
-            funding_high: std::env::var("FUNDING_HIGH").ok().and_then(|v| v.parse().ok()).unwrap_or(0.0001),
-            funding_spread: std::env::var("FUNDING_SPREAD").ok().and_then(|v| v.parse().ok()).unwrap_or(0.00005),
-            liq_score_th: std::env::var("LIQ_SCORE_TH").ok().and_then(|v| v.parse().ok()).unwrap_or(3.0),
-            depeg_th: std::env::var("DEPEG_TH").ok().and_then(|v| v.parse().ok()).unwrap_or(0.002),
-            vol_low: std::env::var("VOL_LOW").ok().and_then(|v| v.parse().ok()).unwrap_or(0.6),
-            vol_high: std::env::var("VOL_HIGH").ok().and_then(|v| v.parse().ok()).unwrap_or(1.6),
-            mom_th: std::env::var("MOM_TH").ok().and_then(|v| v.parse().ok()).unwrap_or(0.4),
-            stretch_th: std::env::var("STRETCH_TH").ok().and_then(|v| v.parse().ok()).unwrap_or(0.8),
+            binance_base: std::env::var("BINANCE_BASE")
+                .unwrap_or_else(|_| "https://api.binance.com".to_string()),
+            binance_fapi_base: std::env::var("BINANCE_FAPI_BASE")
+                .unwrap_or_else(|_| "https://fapi.binance.com".to_string()),
+            kraken_base: std::env::var("KRAKEN_BASE")
+                .unwrap_or_else(|_| "https://api.kraken.com".to_string()),
+            sqlite_path: std::env::var("SQLITE_PATH")
+                .unwrap_or_else(|_| "./bot.sqlite".to_string()),
+            persist_every_secs: std::env::var("PERSIST_SECS")
+                .ok()
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(300),
+            max_position_pct: std::env::var("MAX_POS_PCT")
+                .ok()
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(0.05),
+            max_daily_loss_pct: std::env::var("MAX_DAILY_LOSS_PCT")
+                .ok()
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(0.02),
+            max_trades_per_day: std::env::var("MAX_TRADES_DAY")
+                .ok()
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(20),
+            cooldown_secs: std::env::var("COOLDOWN_SECS")
+                .ok()
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(600),
+            vol_pause_mult: std::env::var("VOL_PAUSE_MULT")
+                .ok()
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(2.5),
+            entry_threshold: std::env::var("ENTRY_TH")
+                .ok()
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(1.2),
+            exit_threshold: std::env::var("EXIT_TH")
+                .ok()
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(0.4),
+            breakout_threshold: std::env::var("BREAKOUT_TH")
+                .ok()
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(2.0),
+            edge_hurdle: std::env::var("EDGE_HURDLE")
+                .ok()
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(0.003),
+            edge_scale: std::env::var("EDGE_SCALE")
+                .ok()
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(0.0025),
+            ema_fast: std::env::var("EMA_FAST")
+                .ok()
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(6),
+            ema_slow: std::env::var("EMA_SLOW")
+                .ok()
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(24),
+            vol_window: std::env::var("VOL_WINDOW")
+                .ok()
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(30),
+            volume_window: std::env::var("VOL_MEAN_WINDOW")
+                .ok()
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(30),
+            take_profit: std::env::var("TAKE_PROFIT")
+                .ok()
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(0.006),
+            stop_loss: std::env::var("STOP_LOSS")
+                .ok()
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(0.004),
+            time_stop: std::env::var("TIME_STOP")
+                .ok()
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(12),
+            funding_high: std::env::var("FUNDING_HIGH")
+                .ok()
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(0.0001),
+            funding_spread: std::env::var("FUNDING_SPREAD")
+                .ok()
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(0.00005),
+            liq_score_th: std::env::var("LIQ_SCORE_TH")
+                .ok()
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(3.0),
+            depeg_th: std::env::var("DEPEG_TH")
+                .ok()
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(0.002),
+            vol_low: std::env::var("VOL_LOW")
+                .ok()
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(0.6),
+            vol_high: std::env::var("VOL_HIGH")
+                .ok()
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(1.6),
+            mom_th: std::env::var("MOM_TH")
+                .ok()
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(0.4),
+            stretch_th: std::env::var("STRETCH_TH")
+                .ok()
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(0.8),
             kill_file: std::env::var("KILL_FILE").unwrap_or_else(|_| "/tmp/STOP".to_string()),
             wal_path: std::env::var("WAL_PATH").unwrap_or_else(|_| "./bot.wal".to_string()),
-            reconcile_secs: std::env::var("RECONCILE_SECS").ok().and_then(|v| v.parse().ok()).unwrap_or(60),
-            cancel_after_candles: std::env::var("CANCEL_AFTER_CANDLES").ok().and_then(|v| v.parse().ok()).unwrap_or(3),
-            reconcile_drift_pct: std::env::var("RECONCILE_DRIFT_PCT").ok().and_then(|v| v.parse().ok()).unwrap_or(0.02),
-            reconcile_drift_abs: std::env::var("RECONCILE_DRIFT_ABS").ok().and_then(|v| v.parse().ok()).unwrap_or(0.0005),
-            max_fill_slip_pct: std::env::var("MAX_FILL_SLIP_PCT").ok().and_then(|v| v.parse().ok()).unwrap_or(0.02),
-            fill_channel_capacity: std::env::var("FILL_CHANNEL_CAP").ok().and_then(|v| v.parse().ok()).unwrap_or(256),
-            allow_unknown_regime: std::env::var("ALLOW_UNKNOWN_REGIME").map(|v| matches!(v.to_lowercase().as_str(), "1" | "true" | "yes")).unwrap_or(false),
-            max_latency_ms: std::env::var("MAX_LATENCY_MS").ok().and_then(|v| v.parse().ok()).unwrap_or(300000),
-            max_liquidity_spread: std::env::var("MAX_LIQ_SPREAD").ok().and_then(|v| v.parse().ok()).unwrap_or(0.05),
-            min_hold_candles: std::env::var("MIN_HOLD_CANDLES").ok().and_then(|v| v.parse().ok()).unwrap_or(0),
+            reconcile_secs: std::env::var("RECONCILE_SECS")
+                .ok()
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(60),
+            cancel_after_candles: std::env::var("CANCEL_AFTER_CANDLES")
+                .ok()
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(3),
+            reconcile_drift_pct: std::env::var("RECONCILE_DRIFT_PCT")
+                .ok()
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(0.02),
+            reconcile_drift_abs: std::env::var("RECONCILE_DRIFT_ABS")
+                .ok()
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(0.0005),
+            max_fill_slip_pct: std::env::var("MAX_FILL_SLIP_PCT")
+                .ok()
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(0.02),
+            fill_channel_capacity: std::env::var("FILL_CHANNEL_CAP")
+                .ok()
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(256),
+            allow_unknown_regime: std::env::var("ALLOW_UNKNOWN_REGIME")
+                .map(|v| matches!(v.to_lowercase().as_str(), "1" | "true" | "yes"))
+                .unwrap_or(false),
+            max_latency_ms: std::env::var("MAX_LATENCY_MS")
+                .ok()
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(300000),
+            max_liquidity_spread: std::env::var("MAX_LIQ_SPREAD")
+                .ok()
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(0.05),
+            min_hold_candles: std::env::var("MIN_HOLD_CANDLES")
+                .ok()
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(0),
         }
     }
 
@@ -149,19 +268,33 @@ struct RingBuffer<T: Copy> {
 
 impl<T: Copy> RingBuffer<T> {
     fn new(size: usize, zero: T) -> Self {
-        Self { buf: vec![zero; size], idx: 0, filled: false }
+        Self {
+            buf: vec![zero; size],
+            idx: 0,
+            filled: false,
+        }
     }
 
     fn push(&mut self, value: T) -> Option<T> {
-        let old = if self.filled { Some(self.buf[self.idx]) } else { None };
+        let old = if self.filled {
+            Some(self.buf[self.idx])
+        } else {
+            None
+        };
         self.buf[self.idx] = value;
         self.idx = (self.idx + 1) % self.buf.len();
-        if self.idx == 0 { self.filled = true; }
+        if self.idx == 0 {
+            self.filled = true;
+        }
         old
     }
 
     fn last(&self) -> T {
-        let i = if self.idx == 0 { self.buf.len() - 1 } else { self.idx - 1 };
+        let i = if self.idx == 0 {
+            self.buf.len() - 1
+        } else {
+            self.idx - 1
+        };
         self.buf[i]
     }
 }
@@ -227,8 +360,16 @@ impl IndicatorState {
     }
 
     fn update(&mut self, price: f64, volume: f64, alpha_fast: f64, alpha_slow: f64) {
-        self.ema_fast = if self.ema_fast == 0.0 { price } else { alpha_fast * price + (1.0 - alpha_fast) * self.ema_fast };
-        self.ema_slow = if self.ema_slow == 0.0 { price } else { alpha_slow * price + (1.0 - alpha_slow) * self.ema_slow };
+        self.ema_fast = if self.ema_fast == 0.0 {
+            price
+        } else {
+            alpha_fast * price + (1.0 - alpha_fast) * self.ema_fast
+        };
+        self.ema_slow = if self.ema_slow == 0.0 {
+            price
+        } else {
+            alpha_slow * price + (1.0 - alpha_slow) * self.ema_slow
+        };
 
         self.price_n += 1;
         let pdelta = price - self.price_mean;
@@ -245,7 +386,11 @@ impl IndicatorState {
         self.sum_px_vol += price * volume;
         self.sum_vol += volume;
 
-        let var = if self.price_n > 1 { self.price_m2 / (self.price_n as f64 - 1.0) } else { 0.0 };
+        let var = if self.price_n > 1 {
+            self.price_m2 / (self.price_n as f64 - 1.0)
+        } else {
+            0.0
+        };
         let vol = var.sqrt();
         self.last_vol = vol;
         self.vol_n += 1;
@@ -254,10 +399,22 @@ impl IndicatorState {
         let voldelta2 = vol - self.vol_mean;
         self.vol_m2 += voldelta * voldelta2;
 
-        let vwap = if self.sum_vol > 0.0 { self.sum_px_vol / self.sum_vol } else { price };
+        let vwap = if self.sum_vol > 0.0 {
+            self.sum_px_vol / self.sum_vol
+        } else {
+            price
+        };
         let momentum = self.ema_fast - self.ema_slow;
-        let stretch = if vwap > 0.0 { (price - vwap) / vwap } else { 0.0 };
-        let vspike = if self.volume_mean > 0.0 { volume / self.volume_mean } else { 0.0 };
+        let stretch = if vwap > 0.0 {
+            (price - vwap) / vwap
+        } else {
+            0.0
+        };
+        let vspike = if self.volume_mean > 0.0 {
+            volume / self.volume_mean
+        } else {
+            0.0
+        };
         self.last_stretch = stretch;
         self.last_volume_spike = vspike;
 
@@ -283,7 +440,11 @@ impl IndicatorState {
     fn zscore(val: f64, mean: f64, m2: f64, n: u64) -> f64 {
         if n > 1 {
             let var = m2 / (n as f64 - 1.0);
-            if var > 0.0 { (val - mean) / var.sqrt() } else { 0.0 }
+            if var > 0.0 {
+                (val - mean) / var.sqrt()
+            } else {
+                0.0
+            }
         } else {
             0.0
         }
@@ -294,7 +455,11 @@ impl IndicatorState {
         IndicatorSnapshot {
             ema_fast: self.ema_fast,
             ema_slow: self.ema_slow,
-            vwap: if self.sum_vol > 0.0 { self.sum_px_vol / self.sum_vol } else { 0.0 },
+            vwap: if self.sum_vol > 0.0 {
+                self.sum_px_vol / self.sum_vol
+            } else {
+                0.0
+            },
             vol: self.last_vol,
             vol_mean: self.vol_mean,
             momentum,
@@ -302,8 +467,18 @@ impl IndicatorState {
             stretch: self.last_stretch,
             z_momentum: Self::zscore(momentum, self.mom_mean, self.mom_m2, self.mom_n),
             z_vol: Self::zscore(self.last_vol, self.vol_mean, self.vol_m2, self.vol_n),
-            z_volume_spike: Self::zscore(self.last_volume_spike, self.vspike_mean, self.vspike_m2, self.vspike_n),
-            z_stretch: Self::zscore(self.last_stretch, self.stretch_mean, self.stretch_m2, self.stretch_n),
+            z_volume_spike: Self::zscore(
+                self.last_volume_spike,
+                self.vspike_mean,
+                self.vspike_m2,
+                self.vspike_n,
+            ),
+            z_stretch: Self::zscore(
+                self.last_stretch,
+                self.stretch_mean,
+                self.stretch_m2,
+                self.stretch_n,
+            ),
         }
     }
 }
@@ -317,15 +492,33 @@ pub struct MarketState {
 
 impl MarketState {
     pub fn new(cfg: Config) -> Self {
-        Self { cfg, buffers: HashMap::new(), indicators: HashMap::new(), aux: HashMap::new() }
+        Self {
+            cfg,
+            buffers: HashMap::new(),
+            indicators: HashMap::new(),
+            aux: HashMap::new(),
+        }
     }
 
     pub fn on_candle(&mut self, candle: ExCandle) {
         let sym = self.cfg.symbol.clone();
-        let zero = ExCandle { ts: 0, o: 0.0, h: 0.0, l: 0.0, c: 0.0, v: 0.0 };
-        let buf = self.buffers.entry(sym.clone()).or_insert_with(|| RingBuffer::new(self.cfg.window, zero));
+        let zero = ExCandle {
+            ts: 0,
+            o: 0.0,
+            h: 0.0,
+            l: 0.0,
+            c: 0.0,
+            v: 0.0,
+        };
+        let buf = self
+            .buffers
+            .entry(sym.clone())
+            .or_insert_with(|| RingBuffer::new(self.cfg.window, zero));
         let _old = buf.push(candle);
-        let ind = self.indicators.entry(sym).or_insert_with(IndicatorState::new);
+        let ind = self
+            .indicators
+            .entry(sym)
+            .or_insert_with(IndicatorState::new);
         let alpha_fast = 2.0 / (self.cfg.ema_fast as f64 + 1.0);
         let alpha_slow = 2.0 / (self.cfg.ema_slow as f64 + 1.0);
         ind.update(candle.c, candle.v, alpha_fast, alpha_slow);
@@ -335,9 +528,23 @@ impl MarketState {
         let buf = self.buffers.get(symbol);
         let ind = self.indicators.get(symbol);
         let last = if let Some(buf) = buf {
-            crate::strategy::Candle { ts: buf.last().ts, o: buf.last().o, h: buf.last().h, l: buf.last().l, c: buf.last().c, v: buf.last().v }
+            crate::strategy::Candle {
+                ts: buf.last().ts,
+                o: buf.last().o,
+                h: buf.last().h,
+                l: buf.last().l,
+                c: buf.last().c,
+                v: buf.last().v,
+            }
         } else {
-            crate::strategy::Candle { ts: 0, o: 0.0, h: 0.0, l: 0.0, c: 0.0, v: 0.0 }
+            crate::strategy::Candle {
+                ts: 0,
+                o: 0.0,
+                h: 0.0,
+                l: 0.0,
+                c: 0.0,
+                v: 0.0,
+            }
         };
         let indicators = ind.map(|i| i.snapshot()).unwrap_or_default();
         let aux = *self.aux.get(symbol).unwrap_or(&MarketAux::default());
@@ -368,9 +575,18 @@ impl StrategyInstance {
             let id = format!("mom-{}", i);
             list.push(Self {
                 id: id.clone(),
-                strategy: Box::new(SimpleMomentum { id, start_delay: offset, cfg: cfg.clone() }),
+                strategy: Box::new(SimpleMomentum {
+                    id,
+                    start_delay: offset,
+                    cfg: cfg.clone(),
+                }),
                 state: StrategyState {
-                    portfolio: PortfolioState { cash: 1000.0, position: 0.0, entry_price: 0.0, equity: 1000.0 },
+                    portfolio: PortfolioState {
+                        cash: 1000.0,
+                        position: 0.0,
+                        entry_price: 0.0,
+                        equity: 1000.0,
+                    },
                     metrics: MetricsState::default(),
                     last_trade_ts: 0,
                     last_loss_ts: 0,
@@ -416,7 +632,12 @@ impl StrategyInstance {
                     cfg: cfg_i,
                 }),
                 state: StrategyState {
-                    portfolio: PortfolioState { cash: 1000.0, position: 0.0, entry_price: 0.0, equity: 1000.0 },
+                    portfolio: PortfolioState {
+                        cash: 1000.0,
+                        position: 0.0,
+                        entry_price: 0.0,
+                        equity: 1000.0,
+                    },
                     metrics: MetricsState::default(),
                     last_trade_ts: 0,
                     last_loss_ts: 0,
@@ -436,9 +657,17 @@ impl StrategyInstance {
             let id = format!("carry-{}", i);
             list.push(Self {
                 id: id.clone(),
-                strategy: Box::new(CarryOpportunistic { id, cfg: cfg.clone() }),
+                strategy: Box::new(CarryOpportunistic {
+                    id,
+                    cfg: cfg.clone(),
+                }),
                 state: StrategyState {
-                    portfolio: PortfolioState { cash: 1000.0, position: 0.0, entry_price: 0.0, equity: 1000.0 },
+                    portfolio: PortfolioState {
+                        cash: 1000.0,
+                        position: 0.0,
+                        entry_price: 0.0,
+                        equity: 1000.0,
+                    },
                     metrics: MetricsState::default(),
                     last_trade_ts: 0,
                     last_loss_ts: 0,
@@ -485,7 +714,8 @@ impl Strategy for SimpleMomentum {
         let in_uptrend = market.indicators.ema_fast > market.indicators.ema_slow;
         let in_downtrend = market.indicators.ema_fast < market.indicators.ema_slow;
         let trend_strength = if market.indicators.ema_slow > 0.0 {
-            (market.indicators.ema_fast - market.indicators.ema_slow).abs() / market.indicators.ema_slow
+            (market.indicators.ema_fast - market.indicators.ema_slow).abs()
+                / market.indicators.ema_slow
         } else {
             0.0
         };
@@ -591,7 +821,8 @@ impl Strategy for SimpleMomentum {
                 return crate::strategy::Action::Sell { qty: 0.001 };
             }
             // Stretched below in downtrend or weak trend: buy expecting reversion
-            if market.indicators.z_stretch < -self.cfg.stretch_th && (in_downtrend || !strong_trend) {
+            if market.indicators.z_stretch < -self.cfg.stretch_th && (in_downtrend || !strong_trend)
+            {
                 return crate::strategy::Action::Buy { qty: 0.001 };
             }
             // In strong opposite trend, don't mean-revert - follow trend instead
@@ -759,7 +990,10 @@ mod tests {
 
     #[test]
     fn test_sleep_until_next_candle_boundary() {
-        let cfg = Config { candle_granularity: 300, ..test_config() };
+        let cfg = Config {
+            candle_granularity: 300,
+            ..test_config()
+        };
 
         // Exactly at boundary
         assert_eq!(cfg.sleep_until_next_candle(300), 300);
@@ -775,7 +1009,10 @@ mod tests {
 
     #[test]
     fn test_sleep_until_next_candle_zero() {
-        let cfg = Config { candle_granularity: 300, ..test_config() };
+        let cfg = Config {
+            candle_granularity: 300,
+            ..test_config()
+        };
         assert_eq!(cfg.sleep_until_next_candle(0), 300);
     }
 
@@ -890,7 +1127,14 @@ mod tests {
         let cfg = test_config();
         let mut market = MarketState::new(cfg.clone());
 
-        let candle = ExCandle { ts: 1000, o: 99.0, h: 101.0, l: 98.0, c: 100.0, v: 5000.0 };
+        let candle = ExCandle {
+            ts: 1000,
+            o: 99.0,
+            h: 101.0,
+            l: 98.0,
+            c: 100.0,
+            v: 5000.0,
+        };
         market.on_candle(candle);
 
         let view = market.view(&cfg.symbol);
@@ -940,9 +1184,18 @@ mod tests {
     #[test]
     fn test_simple_momentum_start_delay() {
         let cfg = test_config();
-        let mut strategy = SimpleMomentum { id: "test".to_string(), start_delay: 1000, cfg: cfg.clone() };
+        let mut strategy = SimpleMomentum {
+            id: "test".to_string(),
+            start_delay: 1000,
+            cfg: cfg.clone(),
+        };
         let mut state = StrategyState {
-            portfolio: PortfolioState { cash: 1000.0, position: 0.0, entry_price: 0.0, equity: 1000.0 },
+            portfolio: PortfolioState {
+                cash: 1000.0,
+                position: 0.0,
+                entry_price: 0.0,
+                equity: 1000.0,
+            },
             metrics: MetricsState::default(),
             last_trade_ts: 0,
             last_loss_ts: 0,
@@ -955,22 +1208,41 @@ mod tests {
         // Create a view with ts < start_delay
         let view = MarketView {
             symbol: "BTCUSDT",
-            last: crate::strategy::Candle { ts: 500, o: 100.0, h: 101.0, l: 99.0, c: 100.0, v: 1000.0 },
+            last: crate::strategy::Candle {
+                ts: 500,
+                o: 100.0,
+                h: 101.0,
+                l: 99.0,
+                c: 100.0,
+                v: 1000.0,
+            },
             indicators: IndicatorSnapshot::default(),
             aux: MarketAux::default(),
         };
 
         let action = strategy.update(view, &mut state);
-        assert!(matches!(action, Action::Hold), "Should hold before start_delay");
+        assert!(
+            matches!(action, Action::Hold),
+            "Should hold before start_delay"
+        );
     }
 
     #[test]
     fn test_simple_momentum_vol_pause() {
         let mut cfg = test_config();
         cfg.vol_pause_mult = 2.0;
-        let mut strategy = SimpleMomentum { id: "test".to_string(), start_delay: 0, cfg: cfg.clone() };
+        let mut strategy = SimpleMomentum {
+            id: "test".to_string(),
+            start_delay: 0,
+            cfg: cfg.clone(),
+        };
         let mut state = StrategyState {
-            portfolio: PortfolioState { cash: 1000.0, position: 0.0, entry_price: 0.0, equity: 1000.0 },
+            portfolio: PortfolioState {
+                cash: 1000.0,
+                position: 0.0,
+                entry_price: 0.0,
+                equity: 1000.0,
+            },
             metrics: MetricsState::default(),
             last_trade_ts: 0,
             last_loss_ts: 0,
@@ -983,13 +1255,27 @@ mod tests {
         // High volatility ratio triggers pause
         let view = MarketView {
             symbol: "BTCUSDT",
-            last: crate::strategy::Candle { ts: 1000, o: 100.0, h: 101.0, l: 99.0, c: 100.0, v: 1000.0 },
-            indicators: IndicatorSnapshot { vol: 5.0, vol_mean: 2.0, ..Default::default() },
+            last: crate::strategy::Candle {
+                ts: 1000,
+                o: 100.0,
+                h: 101.0,
+                l: 99.0,
+                c: 100.0,
+                v: 1000.0,
+            },
+            indicators: IndicatorSnapshot {
+                vol: 5.0,
+                vol_mean: 2.0,
+                ..Default::default()
+            },
             aux: MarketAux::default(),
         };
 
         let action = strategy.update(view, &mut state);
-        assert!(matches!(action, Action::Hold), "Should hold during vol spike");
+        assert!(
+            matches!(action, Action::Hold),
+            "Should hold during vol spike"
+        );
     }
 
     #[test]
@@ -997,9 +1283,18 @@ mod tests {
         let mut cfg = test_config();
         cfg.funding_high = 0.0001;
         cfg.funding_spread = 0.00005;
-        let mut strategy = SimpleMomentum { id: "test".to_string(), start_delay: 0, cfg: cfg.clone() };
+        let mut strategy = SimpleMomentum {
+            id: "test".to_string(),
+            start_delay: 0,
+            cfg: cfg.clone(),
+        };
         let mut state = StrategyState {
-            portfolio: PortfolioState { cash: 1000.0, position: 0.0, entry_price: 0.0, equity: 1000.0 },
+            portfolio: PortfolioState {
+                cash: 1000.0,
+                position: 0.0,
+                entry_price: 0.0,
+                equity: 1000.0,
+            },
             metrics: MetricsState::default(),
             last_trade_ts: 0,
             last_loss_ts: 0,
@@ -1012,7 +1307,14 @@ mod tests {
         // High positive funding + low borrow = short opportunity
         let view = MarketView {
             symbol: "BTCUSDT",
-            last: crate::strategy::Candle { ts: 1000, o: 100.0, h: 101.0, l: 99.0, c: 100.0, v: 1000.0 },
+            last: crate::strategy::Candle {
+                ts: 1000,
+                o: 100.0,
+                h: 101.0,
+                l: 99.0,
+                c: 100.0,
+                v: 1000.0,
+            },
             indicators: IndicatorSnapshot {
                 z_momentum: 2.0,
                 z_vol: 1.0,
@@ -1032,16 +1334,28 @@ mod tests {
         };
 
         let action = strategy.update(view, &mut state);
-        assert!(matches!(action, Action::Sell { .. }), "Should short on high positive funding");
+        assert!(
+            matches!(action, Action::Sell { .. }),
+            "Should short on high positive funding"
+        );
     }
 
     #[test]
     fn test_simple_momentum_liquidation_cascade() {
         let mut cfg = test_config();
         cfg.liq_score_th = 3.0;
-        let mut strategy = SimpleMomentum { id: "test".to_string(), start_delay: 0, cfg: cfg.clone() };
+        let mut strategy = SimpleMomentum {
+            id: "test".to_string(),
+            start_delay: 0,
+            cfg: cfg.clone(),
+        };
         let mut state = StrategyState {
-            portfolio: PortfolioState { cash: 1000.0, position: 0.0, entry_price: 0.0, equity: 1000.0 },
+            portfolio: PortfolioState {
+                cash: 1000.0,
+                position: 0.0,
+                entry_price: 0.0,
+                equity: 1000.0,
+            },
             metrics: MetricsState::default(),
             last_trade_ts: 0,
             last_loss_ts: 0,
@@ -1054,7 +1368,14 @@ mod tests {
         // High liquidation score + positive momentum = buy with cascade
         let view = MarketView {
             symbol: "BTCUSDT",
-            last: crate::strategy::Candle { ts: 1000, o: 100.0, h: 101.0, l: 99.0, c: 100.0, v: 1000.0 },
+            last: crate::strategy::Candle {
+                ts: 1000,
+                o: 100.0,
+                h: 101.0,
+                l: 99.0,
+                c: 100.0,
+                v: 1000.0,
+            },
             indicators: IndicatorSnapshot {
                 z_momentum: 1.5, // Positive momentum
                 z_vol: 1.0,
@@ -1072,7 +1393,10 @@ mod tests {
         };
 
         let action = strategy.update(view, &mut state);
-        assert!(matches!(action, Action::Buy { .. }), "Should buy on liq cascade with positive momentum");
+        assert!(
+            matches!(action, Action::Buy { .. }),
+            "Should buy on liq cascade with positive momentum"
+        );
     }
 
     #[test]
@@ -1080,7 +1404,11 @@ mod tests {
         let mut cfg = test_config();
         cfg.take_profit = 0.006;
         cfg.edge_hurdle = 0.0; // Disable edge check for position exit test
-        let mut strategy = SimpleMomentum { id: "test".to_string(), start_delay: 0, cfg: cfg.clone() };
+        let mut strategy = SimpleMomentum {
+            id: "test".to_string(),
+            start_delay: 0,
+            cfg: cfg.clone(),
+        };
         let mut state = StrategyState {
             portfolio: PortfolioState {
                 cash: 900.0,
@@ -1100,13 +1428,28 @@ mod tests {
         // Price moved up 1% (above take_profit 0.6%)
         let view = MarketView {
             symbol: "BTCUSDT",
-            last: crate::strategy::Candle { ts: 1000, o: 100.0, h: 102.0, l: 100.0, c: 101.0, v: 1000.0 },
-            indicators: IndicatorSnapshot { z_momentum: 2.0, vol: 1.0, vol_mean: 1.0, ..Default::default() },
+            last: crate::strategy::Candle {
+                ts: 1000,
+                o: 100.0,
+                h: 102.0,
+                l: 100.0,
+                c: 101.0,
+                v: 1000.0,
+            },
+            indicators: IndicatorSnapshot {
+                z_momentum: 2.0,
+                vol: 1.0,
+                vol_mean: 1.0,
+                ..Default::default()
+            },
             aux: MarketAux::default(),
         };
 
         let action = strategy.update(view, &mut state);
-        assert!(matches!(action, Action::Close), "Should close on take profit");
+        assert!(
+            matches!(action, Action::Close),
+            "Should close on take profit"
+        );
     }
 
     #[test]
@@ -1114,7 +1457,11 @@ mod tests {
         let mut cfg = test_config();
         cfg.stop_loss = 0.004;
         cfg.edge_hurdle = 0.0; // Disable edge check for position exit test
-        let mut strategy = SimpleMomentum { id: "test".to_string(), start_delay: 0, cfg: cfg.clone() };
+        let mut strategy = SimpleMomentum {
+            id: "test".to_string(),
+            start_delay: 0,
+            cfg: cfg.clone(),
+        };
         let mut state = StrategyState {
             portfolio: PortfolioState {
                 cash: 900.0,
@@ -1134,8 +1481,20 @@ mod tests {
         // Price moved down 0.5% (above stop_loss 0.4%)
         let view = MarketView {
             symbol: "BTCUSDT",
-            last: crate::strategy::Candle { ts: 1000, o: 100.0, h: 100.0, l: 99.0, c: 99.5, v: 1000.0 },
-            indicators: IndicatorSnapshot { z_momentum: 2.0, vol: 1.0, vol_mean: 1.0, ..Default::default() },
+            last: crate::strategy::Candle {
+                ts: 1000,
+                o: 100.0,
+                h: 100.0,
+                l: 99.0,
+                c: 99.5,
+                v: 1000.0,
+            },
+            indicators: IndicatorSnapshot {
+                z_momentum: 2.0,
+                vol: 1.0,
+                vol_mean: 1.0,
+                ..Default::default()
+            },
             aux: MarketAux::default(),
         };
 
@@ -1149,7 +1508,11 @@ mod tests {
         cfg.time_stop = 12; // 12 candles
         cfg.candle_granularity = 300;
         cfg.edge_hurdle = 0.0; // Disable edge check for position exit test
-        let mut strategy = SimpleMomentum { id: "test".to_string(), start_delay: 0, cfg: cfg.clone() };
+        let mut strategy = SimpleMomentum {
+            id: "test".to_string(),
+            start_delay: 0,
+            cfg: cfg.clone(),
+        };
         let mut state = StrategyState {
             portfolio: PortfolioState {
                 cash: 900.0,
@@ -1169,8 +1532,20 @@ mod tests {
         // 12 candles * 300 seconds = 3600 seconds elapsed
         let view = MarketView {
             symbol: "BTCUSDT",
-            last: crate::strategy::Candle { ts: 3601, o: 100.0, h: 100.5, l: 99.5, c: 100.0, v: 1000.0 },
-            indicators: IndicatorSnapshot { z_momentum: 2.0, vol: 1.0, vol_mean: 1.0, ..Default::default() },
+            last: crate::strategy::Candle {
+                ts: 3601,
+                o: 100.0,
+                h: 100.5,
+                l: 99.5,
+                c: 100.0,
+                v: 1000.0,
+            },
+            indicators: IndicatorSnapshot {
+                z_momentum: 2.0,
+                vol: 1.0,
+                vol_mean: 1.0,
+                ..Default::default()
+            },
             aux: MarketAux::default(),
         };
 
@@ -1187,9 +1562,17 @@ mod tests {
         let mut cfg = test_config();
         cfg.funding_high = 0.0001;
         cfg.funding_spread = 0.00005;
-        let mut strategy = CarryOpportunistic { id: "carry-test".to_string(), cfg: cfg.clone() };
+        let mut strategy = CarryOpportunistic {
+            id: "carry-test".to_string(),
+            cfg: cfg.clone(),
+        };
         let mut state = StrategyState {
-            portfolio: PortfolioState { cash: 1000.0, position: 0.0, entry_price: 0.0, equity: 1000.0 },
+            portfolio: PortfolioState {
+                cash: 1000.0,
+                position: 0.0,
+                entry_price: 0.0,
+                equity: 1000.0,
+            },
             metrics: MetricsState::default(),
             last_trade_ts: 0,
             last_loss_ts: 0,
@@ -1202,7 +1585,14 @@ mod tests {
         // High negative funding + low borrow = long opportunity
         let view = MarketView {
             symbol: "BTCUSDT",
-            last: crate::strategy::Candle { ts: 1000, o: 100.0, h: 101.0, l: 99.0, c: 100.0, v: 1000.0 },
+            last: crate::strategy::Candle {
+                ts: 1000,
+                o: 100.0,
+                h: 101.0,
+                l: 99.0,
+                c: 100.0,
+                v: 1000.0,
+            },
             indicators: IndicatorSnapshot::default(),
             aux: MarketAux {
                 funding_rate: -0.0005, // High negative funding
@@ -1214,14 +1604,20 @@ mod tests {
         };
 
         let action = strategy.update(view, &mut state);
-        assert!(matches!(action, Action::Buy { .. }), "Should long on high negative funding");
+        assert!(
+            matches!(action, Action::Buy { .. }),
+            "Should long on high negative funding"
+        );
     }
 
     #[test]
     fn test_carry_opportunistic_vol_exit() {
         let mut cfg = test_config();
         cfg.vol_pause_mult = 2.0;
-        let mut strategy = CarryOpportunistic { id: "carry-test".to_string(), cfg: cfg.clone() };
+        let mut strategy = CarryOpportunistic {
+            id: "carry-test".to_string(),
+            cfg: cfg.clone(),
+        };
         let mut state = StrategyState {
             portfolio: PortfolioState {
                 cash: 900.0,
@@ -1241,8 +1637,19 @@ mod tests {
         // Vol spike while in position = close
         let view = MarketView {
             symbol: "BTCUSDT",
-            last: crate::strategy::Candle { ts: 1000, o: 100.0, h: 101.0, l: 99.0, c: 100.0, v: 1000.0 },
-            indicators: IndicatorSnapshot { vol: 5.0, vol_mean: 2.0, ..Default::default() },
+            last: crate::strategy::Candle {
+                ts: 1000,
+                o: 100.0,
+                h: 101.0,
+                l: 99.0,
+                c: 100.0,
+                v: 1000.0,
+            },
+            indicators: IndicatorSnapshot {
+                vol: 5.0,
+                vol_mean: 2.0,
+                ..Default::default()
+            },
             aux: MarketAux::default(),
         };
 
@@ -1254,9 +1661,17 @@ mod tests {
     fn test_carry_depeg_snapback() {
         let mut cfg = test_config();
         cfg.depeg_th = 0.002;
-        let mut strategy = CarryOpportunistic { id: "carry-test".to_string(), cfg: cfg.clone() };
+        let mut strategy = CarryOpportunistic {
+            id: "carry-test".to_string(),
+            cfg: cfg.clone(),
+        };
         let mut state = StrategyState {
-            portfolio: PortfolioState { cash: 1000.0, position: 0.0, entry_price: 0.0, equity: 1000.0 },
+            portfolio: PortfolioState {
+                cash: 1000.0,
+                position: 0.0,
+                entry_price: 0.0,
+                equity: 1000.0,
+            },
             metrics: MetricsState::default(),
             last_trade_ts: 0,
             last_loss_ts: 0,
@@ -1269,7 +1684,14 @@ mod tests {
         // Negative depeg (stablecoin below peg) = buy expecting snapback
         let view = MarketView {
             symbol: "BTCUSDT",
-            last: crate::strategy::Candle { ts: 1000, o: 100.0, h: 101.0, l: 99.0, c: 100.0, v: 1000.0 },
+            last: crate::strategy::Candle {
+                ts: 1000,
+                o: 100.0,
+                h: 101.0,
+                l: 99.0,
+                c: 100.0,
+                v: 1000.0,
+            },
             indicators: IndicatorSnapshot::default(),
             aux: MarketAux {
                 stable_depeg: -0.005, // Below peg
@@ -1279,7 +1701,10 @@ mod tests {
         };
 
         let action = strategy.update(view, &mut state);
-        assert!(matches!(action, Action::Buy { .. }), "Should buy on negative depeg");
+        assert!(
+            matches!(action, Action::Buy { .. }),
+            "Should buy on negative depeg"
+        );
     }
 
     // ==========================================================================
@@ -1327,7 +1752,12 @@ mod tests {
         }
     }
 
-    fn make_view(ts: u64, price: f64, indicators: IndicatorSnapshot, aux: MarketAux) -> MarketView<'static> {
+    fn make_view(
+        ts: u64,
+        price: f64,
+        indicators: IndicatorSnapshot,
+        aux: MarketAux,
+    ) -> MarketView<'static> {
         let candle = crate::strategy::Candle {
             ts,
             o: price,
@@ -1346,7 +1776,12 @@ mod tests {
 
     fn default_state() -> StrategyState {
         StrategyState {
-            portfolio: PortfolioState { cash: 1000.0, position: 0.0, entry_price: 0.0, equity: 1000.0 },
+            portfolio: PortfolioState {
+                cash: 1000.0,
+                position: 0.0,
+                entry_price: 0.0,
+                equity: 1000.0,
+            },
             metrics: MetricsState::default(),
             last_trade_ts: 0,
             last_loss_ts: 0,
@@ -1360,7 +1795,11 @@ mod tests {
     #[test]
     fn test_simple_momentum_funding_carry_signal() {
         let cfg = test_config();
-        let mut strat = SimpleMomentum { id: "mom".to_string(), start_delay: 0, cfg };
+        let mut strat = SimpleMomentum {
+            id: "mom".to_string(),
+            start_delay: 0,
+            cfg,
+        };
         let mut state = default_state();
         let indicators = IndicatorSnapshot {
             z_momentum: 2.0,
@@ -1385,7 +1824,10 @@ mod tests {
     #[test]
     fn test_carry_opportunistic_depeg_signal() {
         let cfg = test_config();
-        let mut strat = CarryOpportunistic { id: "carry".to_string(), cfg };
+        let mut strat = CarryOpportunistic {
+            id: "carry".to_string(),
+            cfg,
+        };
         let mut state = default_state();
         let indicators = IndicatorSnapshot::default();
         let aux = MarketAux {
@@ -1414,7 +1856,11 @@ mod tests {
         cfg.entry_threshold = 1.2;
         cfg.edge_hurdle = 0.0001; // Low hurdle so score passes
         cfg.edge_scale = 0.01;
-        let mut strat = SimpleMomentum { id: "test".to_string(), start_delay: 0, cfg };
+        let mut strat = SimpleMomentum {
+            id: "test".to_string(),
+            start_delay: 0,
+            cfg,
+        };
         let mut state = default_state();
         // High positive score, no downtrend
         let indicators = IndicatorSnapshot {
@@ -1431,7 +1877,10 @@ mod tests {
         let view = make_view(1000, 100.0, indicators, MarketAux::default());
         let action = strat.update(view, &mut state);
         // score = 2.0 + 0.3 + 0.5 = 2.8 > entry_threshold 1.2, not in downtrend
-        assert!(matches!(action, Action::Buy { .. }), "Should buy on strong positive score");
+        assert!(
+            matches!(action, Action::Buy { .. }),
+            "Should buy on strong positive score"
+        );
     }
 
     #[test]
@@ -1440,7 +1889,11 @@ mod tests {
         cfg.entry_threshold = 1.2;
         cfg.edge_hurdle = 0.0001;
         cfg.edge_scale = 0.01;
-        let mut strat = SimpleMomentum { id: "test".to_string(), start_delay: 0, cfg };
+        let mut strat = SimpleMomentum {
+            id: "test".to_string(),
+            start_delay: 0,
+            cfg,
+        };
         let mut state = default_state();
         // High negative score, no uptrend
         let indicators = IndicatorSnapshot {
@@ -1457,7 +1910,10 @@ mod tests {
         let view = make_view(1000, 100.0, indicators, MarketAux::default());
         let action = strat.update(view, &mut state);
         // score = -2.0 + -0.3 + -0.5 = -2.8 < -1.2, not in uptrend
-        assert!(matches!(action, Action::Sell { .. }), "Should sell on strong negative score");
+        assert!(
+            matches!(action, Action::Sell { .. }),
+            "Should sell on strong negative score"
+        );
     }
 
     #[test]
@@ -1465,7 +1921,11 @@ mod tests {
         let mut cfg = test_config();
         cfg.edge_hurdle = 0.1; // Very high hurdle
         cfg.edge_scale = 0.001;
-        let mut strat = SimpleMomentum { id: "test".to_string(), start_delay: 0, cfg };
+        let mut strat = SimpleMomentum {
+            id: "test".to_string(),
+            start_delay: 0,
+            cfg,
+        };
         let mut state = default_state();
         // Weak score that won't pass edge hurdle
         let indicators = IndicatorSnapshot {
@@ -1480,7 +1940,10 @@ mod tests {
         let view = make_view(1000, 100.0, indicators, MarketAux::default());
         let action = strat.update(view, &mut state);
         // score = 0.5 + 0.03 + 0.05 = 0.58, edge = 0.58 * 0.001 = 0.00058 < 0.1
-        assert!(matches!(action, Action::Hold), "Should hold when edge < hurdle");
+        assert!(
+            matches!(action, Action::Hold),
+            "Should hold when edge < hurdle"
+        );
     }
 
     #[test]
@@ -1491,7 +1954,11 @@ mod tests {
         cfg.edge_hurdle = 0.0001;
         cfg.edge_scale = 0.01;
         cfg.entry_threshold = 100.0; // Disable score-based entry
-        let mut strat = SimpleMomentum { id: "test".to_string(), start_delay: 0, cfg };
+        let mut strat = SimpleMomentum {
+            id: "test".to_string(),
+            start_delay: 0,
+            cfg,
+        };
         let mut state = default_state();
         // Low vol ratio (0.5 < 0.6) and positive momentum
         let indicators = IndicatorSnapshot {
@@ -1507,7 +1974,10 @@ mod tests {
         };
         let view = make_view(1000, 100.0, indicators, MarketAux::default());
         let action = strat.update(view, &mut state);
-        assert!(matches!(action, Action::Buy { .. }), "Should buy on low-vol momentum follow");
+        assert!(
+            matches!(action, Action::Buy { .. }),
+            "Should buy on low-vol momentum follow"
+        );
     }
 
     #[test]
@@ -1518,8 +1988,12 @@ mod tests {
         cfg.edge_hurdle = 0.0001;
         cfg.edge_scale = 0.01;
         cfg.entry_threshold = 100.0; // Disable score-based entry
-        cfg.mom_th = 100.0;          // Disable low-vol path
-        let mut strat = SimpleMomentum { id: "test".to_string(), start_delay: 0, cfg };
+        cfg.mom_th = 100.0; // Disable low-vol path
+        let mut strat = SimpleMomentum {
+            id: "test".to_string(),
+            start_delay: 0,
+            cfg,
+        };
         let mut state = default_state();
         // High vol ratio (2.0 > 1.6) and stretched below in downtrend
         let indicators = IndicatorSnapshot {
@@ -1535,7 +2009,10 @@ mod tests {
         };
         let view = make_view(1000, 100.0, indicators, MarketAux::default());
         let action = strat.update(view, &mut state);
-        assert!(matches!(action, Action::Buy { .. }), "Should buy on high-vol mean reversion in downtrend");
+        assert!(
+            matches!(action, Action::Buy { .. }),
+            "Should buy on high-vol mean reversion in downtrend"
+        );
     }
 
     #[test]
@@ -1544,9 +2021,13 @@ mod tests {
         cfg.edge_hurdle = 0.0001;
         cfg.edge_scale = 0.01;
         cfg.entry_threshold = 100.0; // Disable score-based entry
-        cfg.mom_th = 100.0;          // Disable low-vol path
-        cfg.vol_high = 100.0;        // Disable high-vol path
-        let mut strat = SimpleMomentum { id: "test".to_string(), start_delay: 0, cfg };
+        cfg.mom_th = 100.0; // Disable low-vol path
+        cfg.vol_high = 100.0; // Disable high-vol path
+        let mut strat = SimpleMomentum {
+            id: "test".to_string(),
+            start_delay: 0,
+            cfg,
+        };
         let mut state = default_state();
         // Strong downtrend (>1% divergence) with negative momentum
         let indicators = IndicatorSnapshot {
@@ -1562,7 +2043,10 @@ mod tests {
         };
         let view = make_view(1000, 100.0, indicators, MarketAux::default());
         let action = strat.update(view, &mut state);
-        assert!(matches!(action, Action::Sell { .. }), "Should sell on strong downtrend override");
+        assert!(
+            matches!(action, Action::Sell { .. }),
+            "Should sell on strong downtrend override"
+        );
     }
 
     #[test]
@@ -1573,7 +2057,11 @@ mod tests {
         cfg.min_hold_candles = 3;
         cfg.candle_granularity = 300;
         cfg.edge_hurdle = 0.0;
-        let mut strat = SimpleMomentum { id: "test".to_string(), start_delay: 0, cfg };
+        let mut strat = SimpleMomentum {
+            id: "test".to_string(),
+            start_delay: 0,
+            cfg,
+        };
         let mut state = StrategyState {
             portfolio: PortfolioState {
                 cash: 900.0,
@@ -1592,13 +2080,28 @@ mod tests {
         // Price up 1% (should trigger TP) but only 1 candle elapsed (need 3)
         let view = MarketView {
             symbol: "BTCUSDT",
-            last: crate::strategy::Candle { ts: 800, o: 100.0, h: 102.0, l: 100.0, c: 101.0, v: 1000.0 },
-            indicators: IndicatorSnapshot { z_momentum: 2.0, vol: 1.0, vol_mean: 1.0, ..Default::default() },
+            last: crate::strategy::Candle {
+                ts: 800,
+                o: 100.0,
+                h: 102.0,
+                l: 100.0,
+                c: 101.0,
+                v: 1000.0,
+            },
+            indicators: IndicatorSnapshot {
+                z_momentum: 2.0,
+                vol: 1.0,
+                vol_mean: 1.0,
+                ..Default::default()
+            },
             aux: MarketAux::default(),
         };
         let action = strat.update(view, &mut state);
         // 800 - 500 = 300 seconds < 3 * 300 = 900 seconds min hold
-        assert!(matches!(action, Action::Hold), "Should hold — min_hold_candles blocks TP");
+        assert!(
+            matches!(action, Action::Hold),
+            "Should hold — min_hold_candles blocks TP"
+        );
     }
 
     #[test]
@@ -1608,7 +2111,11 @@ mod tests {
         cfg.min_hold_candles = 3;
         cfg.candle_granularity = 300;
         cfg.edge_hurdle = 0.0;
-        let mut strat = SimpleMomentum { id: "test".to_string(), start_delay: 0, cfg };
+        let mut strat = SimpleMomentum {
+            id: "test".to_string(),
+            start_delay: 0,
+            cfg,
+        };
         let mut state = StrategyState {
             portfolio: PortfolioState {
                 cash: 900.0,
@@ -1627,12 +2134,27 @@ mod tests {
         // Price down 0.5% (triggers stop loss) with only 1 candle elapsed
         let view = MarketView {
             symbol: "BTCUSDT",
-            last: crate::strategy::Candle { ts: 800, o: 100.0, h: 100.0, l: 99.0, c: 99.5, v: 1000.0 },
-            indicators: IndicatorSnapshot { z_momentum: 2.0, vol: 1.0, vol_mean: 1.0, ..Default::default() },
+            last: crate::strategy::Candle {
+                ts: 800,
+                o: 100.0,
+                h: 100.0,
+                l: 99.0,
+                c: 99.5,
+                v: 1000.0,
+            },
+            indicators: IndicatorSnapshot {
+                z_momentum: 2.0,
+                vol: 1.0,
+                vol_mean: 1.0,
+                ..Default::default()
+            },
             aux: MarketAux::default(),
         };
         let action = strat.update(view, &mut state);
         // Stop loss always fires regardless of min_hold_candles
-        assert!(matches!(action, Action::Close), "Stop loss fires even within min hold period");
+        assert!(
+            matches!(action, Action::Close),
+            "Stop loss fires even within min hold period"
+        );
     }
 }

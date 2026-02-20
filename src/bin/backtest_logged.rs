@@ -43,7 +43,10 @@ fn load_data(path: &str) -> Vec<CsvRow> {
 
 fn main() {
     let args: Vec<String> = std::env::args().collect();
-    let data_path = args.get(1).map(|s| s.as_str()).unwrap_or("data/btc_1h_180d.csv");
+    let data_path = args
+        .get(1)
+        .map(|s| s.as_str())
+        .unwrap_or("data/btc_1h_180d.csv");
 
     // Log startup
     log(
@@ -289,7 +292,10 @@ fn main() {
             for inst in &strategies {
                 log_checkpoint(
                     &inst.id,
-                    &params_hash(&format!("{}-{}-{}", row.ts, inst.id, inst.state.portfolio.equity)),
+                    &params_hash(&format!(
+                        "{}-{}-{}",
+                        row.ts, inst.id, inst.state.portfolio.equity
+                    )),
                     bar_idx as u64,
                     inst.state.metrics.pnl,
                     inst.state.portfolio.position,
@@ -333,8 +339,8 @@ fn main() {
     }
 
     let duration = start.elapsed();
-    let total_pnl: f64 = strategies.iter().map(|s| s.state.metrics.pnl).sum::<f64>()
-        / strategies.len() as f64;
+    let total_pnl: f64 =
+        strategies.iter().map(|s| s.state.metrics.pnl).sum::<f64>() / strategies.len() as f64;
     let total_wins: u64 = strategies.iter().map(|s| s.state.metrics.wins).sum();
     let total_losses: u64 = strategies.iter().map(|s| s.state.metrics.losses).sum();
     let win_rate = if total_wins + total_losses > 0 {
@@ -362,7 +368,10 @@ fn main() {
         obj(&[
             ("duration_ms", v_num(duration.as_millis() as f64)),
             ("total_bars", v_num(n_bars as f64)),
-            ("bars_per_sec", v_num(n_bars as f64 / duration.as_secs_f64())),
+            (
+                "bars_per_sec",
+                v_num(n_bars as f64 / duration.as_secs_f64()),
+            ),
             ("total_pnl", v_num(total_pnl)),
             ("max_drawdown", v_num(max_drawdown)),
         ]),
@@ -372,7 +381,10 @@ fn main() {
     println!("\n=== Backtest Complete ===");
     println!("Bars: {}", n_bars);
     println!("Duration: {:.2?}", duration);
-    println!("Throughput: {:.0} bars/sec", n_bars as f64 / duration.as_secs_f64());
+    println!(
+        "Throughput: {:.0} bars/sec",
+        n_bars as f64 / duration.as_secs_f64()
+    );
     println!("Total trades: {}", total_trades);
     println!("Win rate: {:.1}%", win_rate * 100.0);
     println!("Total PnL: {:.2}", total_pnl);

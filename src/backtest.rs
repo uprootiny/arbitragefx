@@ -1,5 +1,5 @@
 use anyhow::{anyhow, Result};
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 
 use crate::events::{detect_phase1, EventConfig};
 use crate::features::FeaturePipeline;
@@ -48,15 +48,39 @@ impl ExecConfig {
             _ => ExecMode::Market,
         };
         Self {
-            slippage_k: std::env::var("SLIP_K").ok().and_then(|v| v.parse().ok()).unwrap_or(0.0008),
-            fee_rate: std::env::var("FEE_RATE").ok().and_then(|v| v.parse().ok()).unwrap_or(0.001),
-            latency_min: std::env::var("LAT_MIN").ok().and_then(|v| v.parse().ok()).unwrap_or(2),
-            latency_max: std::env::var("LAT_MAX").ok().and_then(|v| v.parse().ok()).unwrap_or(8),
-            max_fill_ratio: std::env::var("FILL_RATIO").ok().and_then(|v| v.parse().ok()).unwrap_or(0.5),
+            slippage_k: std::env::var("SLIP_K")
+                .ok()
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(0.0008),
+            fee_rate: std::env::var("FEE_RATE")
+                .ok()
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(0.001),
+            latency_min: std::env::var("LAT_MIN")
+                .ok()
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(2),
+            latency_max: std::env::var("LAT_MAX")
+                .ok()
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(8),
+            max_fill_ratio: std::env::var("FILL_RATIO")
+                .ok()
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(0.5),
             mode,
-            limit_fill_prob: std::env::var("LIMIT_FILL_PROB").ok().and_then(|v| v.parse().ok()).unwrap_or(0.7),
-            adverse_selection: std::env::var("ADVERSE_SEL").ok().and_then(|v| v.parse().ok()).unwrap_or(0.3),
-            vol_slip_mult: std::env::var("VOL_SLIP_MULT").ok().and_then(|v| v.parse().ok()).unwrap_or(2.0),
+            limit_fill_prob: std::env::var("LIMIT_FILL_PROB")
+                .ok()
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(0.7),
+            adverse_selection: std::env::var("ADVERSE_SEL")
+                .ok()
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(0.3),
+            vol_slip_mult: std::env::var("VOL_SLIP_MULT")
+                .ok()
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(2.0),
         }
     }
 
@@ -80,7 +104,7 @@ impl ExecConfig {
         Self {
             mode: ExecMode::Limit,
             slippage_k: 0.0001,
-            fee_rate: 0.0002,  // Maker fee
+            fee_rate: 0.0002, // Maker fee
             latency_min: 5,
             latency_max: 20,
             max_fill_ratio: 0.8,
@@ -95,7 +119,7 @@ impl ExecConfig {
         Self {
             mode: ExecMode::Market,
             slippage_k: 0.0008,
-            fee_rate: 0.001,  // Taker fee
+            fee_rate: 0.001, // Taker fee
             latency_min: 2,
             latency_max: 8,
             max_fill_ratio: 1.0,
@@ -110,7 +134,7 @@ impl ExecConfig {
         Self {
             mode: ExecMode::Realistic,
             slippage_k: 0.0005,
-            fee_rate: 0.0004,  // Blended rate
+            fee_rate: 0.0004, // Blended rate
             latency_min: 3,
             latency_max: 15,
             max_fill_ratio: 0.6,
@@ -173,7 +197,7 @@ pub fn calc_slippage(
     let vol_slip = volatility * config.vol_slip_mult * 0.1;
 
     // Total slippage
-    (size_slip + vol_slip).min(0.05)  // Cap at 5%
+    (size_slip + vol_slip).min(0.05) // Cap at 5%
 }
 
 #[derive(Debug, Clone)]
@@ -204,7 +228,11 @@ pub fn parse_csv_line(line: &str) -> Result<CsvRow> {
     if parts.len() < 10 {
         return Err(anyhow!("expected 10+ columns, got {}", parts.len()));
     }
-    let oi = if parts.len() >= 11 { parts[10].trim().parse().unwrap_or(0.0) } else { 0.0 };
+    let oi = if parts.len() >= 11 {
+        parts[10].trim().parse().unwrap_or(0.0)
+    } else {
+        0.0
+    };
     Ok(CsvRow {
         ts: parts[0].trim().parse()?,
         o: parts[1].trim().parse()?,
@@ -229,7 +257,6 @@ fn slippage_price(price: f64, qty: f64, liquidity: f64, k: f64, vol: f64) -> f64
         price * (1.0 - slip)
     }
 }
-
 
 /// Deterministic latency model with bounded jitter.
 /// Uses a simple xorshift to avoid RNG dependencies and keep replay stable.
@@ -353,7 +380,11 @@ pub fn run_backtest(cfg: Config, rows: &[CsvRow]) -> Result<(f64, f64)> {
             };
             if let Some((qty, _price)) = desired {
                 // FIXED: Tag order with strategy index
-                pending.push(PendingOrder { qty, submit_ts: row.ts, strategy_idx: idx });
+                pending.push(PendingOrder {
+                    qty,
+                    submit_ts: row.ts,
+                    strategy_idx: idx,
+                });
                 submits[idx] += 1;
             }
 
@@ -376,14 +407,22 @@ pub fn run_backtest(cfg: Config, rows: &[CsvRow]) -> Result<(f64, f64)> {
                     continue;
                 }
                 let fill_qty = order.qty * exec_cfg.max_fill_ratio;
-                let fill_price = slippage_price(row.c, fill_qty, row.v, exec_cfg.slippage_k, view.indicators.vol);
+                let fill_price = slippage_price(
+                    row.c,
+                    fill_qty,
+                    row.v,
+                    exec_cfg.slippage_k,
+                    view.indicators.vol,
+                );
                 let fee = fill_price * fill_qty.abs() * exec_cfg.fee_rate;
                 let slip_cost = (fill_price - row.c).abs() * fill_qty.abs();
                 friction[idx] += fee + slip_cost;
-                let realized = inst
-                    .state
-                    .portfolio
-                    .apply_fill(Fill { price: fill_price, qty: fill_qty, fee, ts: row.ts });
+                let realized = inst.state.portfolio.apply_fill(Fill {
+                    price: fill_price,
+                    qty: fill_qty,
+                    fee,
+                    ts: row.ts,
+                });
                 fills[idx] += 1;
                 inst.state.metrics.pnl += realized;
                 if realized > 0.0 {
@@ -402,7 +441,11 @@ pub fn run_backtest(cfg: Config, rows: &[CsvRow]) -> Result<(f64, f64)> {
 
                 let remainder = order.qty - fill_qty;
                 if remainder.abs() > 1e-9 {
-                    still_pending.push(PendingOrder { qty: remainder, submit_ts: row.ts, strategy_idx: idx });
+                    still_pending.push(PendingOrder {
+                        qty: remainder,
+                        submit_ts: row.ts,
+                        strategy_idx: idx,
+                    });
                 }
             }
             pending = still_pending;
@@ -415,13 +458,21 @@ pub fn run_backtest(cfg: Config, rows: &[CsvRow]) -> Result<(f64, f64)> {
         for (idx, inst) in strategies.iter_mut().enumerate() {
             if inst.state.portfolio.position.abs() > 1e-9 {
                 let qty = -inst.state.portfolio.position;
-                let fill_price = slippage_price(last.c, qty, last.v, exec_cfg.slippage_k, view.indicators.vol);
+                let fill_price = slippage_price(
+                    last.c,
+                    qty,
+                    last.v,
+                    exec_cfg.slippage_k,
+                    view.indicators.vol,
+                );
                 let fee = fill_price * qty.abs() * exec_cfg.fee_rate;
                 friction[idx] += fee;
-                let realized = inst
-                    .state
-                    .portfolio
-                    .apply_fill(Fill { price: fill_price, qty, fee, ts: last.ts });
+                let realized = inst.state.portfolio.apply_fill(Fill {
+                    price: fill_price,
+                    qty,
+                    fee,
+                    ts: last.ts,
+                });
                 inst.state.metrics.pnl += realized;
                 if realized > 0.0 {
                     inst.state.metrics.wins += 1;
@@ -497,17 +548,26 @@ pub fn run_backtest_full(cfg: Config, rows: &[CsvRow]) -> Result<BacktestResult>
         }
         buy_hold_exit = Some(row.c);
         let candle = crate::exchange::Candle {
-            ts: row.ts, o: row.o, h: row.h, l: row.l, c: row.c, v: row.v,
+            ts: row.ts,
+            o: row.o,
+            h: row.h,
+            l: row.l,
+            c: row.c,
+            v: row.v,
         };
         market.on_candle(candle);
         market.update_aux(
             &cfg.symbol,
             MarketAux {
-                funding_rate: row.funding, borrow_rate: row.borrow,
-                liquidation_score: row.liq, stable_depeg: row.depeg,
+                funding_rate: row.funding,
+                borrow_rate: row.borrow,
+                liquidation_score: row.liq,
+                stable_depeg: row.depeg,
                 fetch_ts: row.ts,
-                has_funding: row.funding != 0.0, has_borrow: row.borrow != 0.0,
-                has_liquidations: row.liq != 0.0, has_depeg: row.depeg != 0.0,
+                has_funding: row.funding != 0.0,
+                has_borrow: row.borrow != 0.0,
+                has_liquidations: row.liq != 0.0,
+                has_depeg: row.depeg != 0.0,
             },
         );
         let features = pipeline.update(row.c, row.funding, row.oi, row.liq, row.depeg);
@@ -528,7 +588,11 @@ pub fn run_backtest_full(cfg: Config, rows: &[CsvRow]) -> Result<BacktestResult>
                 Action::Sell { qty } => Some((-qty.abs(), row.c)),
             };
             if let Some((qty, _price)) = desired {
-                pending.push(PendingOrder { qty, submit_ts: row.ts, strategy_idx: idx });
+                pending.push(PendingOrder {
+                    qty,
+                    submit_ts: row.ts,
+                    strategy_idx: idx,
+                });
             }
 
             let mut still_pending = Vec::new();
@@ -537,28 +601,55 @@ pub fn run_backtest_full(cfg: Config, rows: &[CsvRow]) -> Result<BacktestResult>
                     still_pending.push(order);
                     continue;
                 }
-                let delay = latency_delay(order.submit_ts, order.strategy_idx, exec_cfg.latency_min, exec_cfg.latency_max);
+                let delay = latency_delay(
+                    order.submit_ts,
+                    order.strategy_idx,
+                    exec_cfg.latency_min,
+                    exec_cfg.latency_max,
+                );
                 if row.ts < order.submit_ts + delay {
                     still_pending.push(order);
                     continue;
                 }
                 let fill_qty = order.qty * exec_cfg.max_fill_ratio;
-                let fill_price = slippage_price(row.c, fill_qty, row.v, exec_cfg.slippage_k, view.indicators.vol);
+                let fill_price = slippage_price(
+                    row.c,
+                    fill_qty,
+                    row.v,
+                    exec_cfg.slippage_k,
+                    view.indicators.vol,
+                );
                 let fee = fill_price * fill_qty.abs() * exec_cfg.fee_rate;
                 let slip_cost = (fill_price - row.c).abs() * fill_qty.abs();
                 friction[idx] += fee + slip_cost;
-                let realized = inst.state.portfolio.apply_fill(crate::state::Fill { price: fill_price, qty: fill_qty, fee, ts: row.ts });
+                let realized = inst.state.portfolio.apply_fill(crate::state::Fill {
+                    price: fill_price,
+                    qty: fill_qty,
+                    fee,
+                    ts: row.ts,
+                });
                 fills_count[idx] += 1;
                 inst.state.metrics.pnl += realized;
-                if realized > 0.0 { inst.state.metrics.wins += 1; }
-                else if realized < 0.0 { inst.state.metrics.losses += 1; inst.state.last_loss_ts = row.ts; }
+                if realized > 0.0 {
+                    inst.state.metrics.wins += 1;
+                } else if realized < 0.0 {
+                    inst.state.metrics.losses += 1;
+                    inst.state.last_loss_ts = row.ts;
+                }
                 inst.state.last_trade_ts = row.ts;
                 let day = row.ts / 86_400;
-                if inst.state.trade_day != day { inst.state.trade_day = day; inst.state.trades_today = 0; }
+                if inst.state.trade_day != day {
+                    inst.state.trade_day = day;
+                    inst.state.trades_today = 0;
+                }
                 inst.state.trades_today += 1;
                 let remainder = order.qty - fill_qty;
                 if remainder.abs() > 1e-9 {
-                    still_pending.push(PendingOrder { qty: remainder, submit_ts: row.ts, strategy_idx: idx });
+                    still_pending.push(PendingOrder {
+                        qty: remainder,
+                        submit_ts: row.ts,
+                        strategy_idx: idx,
+                    });
                 }
             }
             pending = still_pending;
@@ -572,27 +663,46 @@ pub fn run_backtest_full(cfg: Config, rows: &[CsvRow]) -> Result<BacktestResult>
         for (idx, inst) in strategies.iter_mut().enumerate() {
             if inst.state.portfolio.position.abs() > 1e-9 {
                 let qty = -inst.state.portfolio.position;
-                let fill_price = slippage_price(last.c, qty, last.v, exec_cfg.slippage_k, view.indicators.vol);
+                let fill_price = slippage_price(
+                    last.c,
+                    qty,
+                    last.v,
+                    exec_cfg.slippage_k,
+                    view.indicators.vol,
+                );
                 let fee = fill_price * qty.abs() * exec_cfg.fee_rate;
                 friction[idx] += fee;
-                let realized = inst.state.portfolio.apply_fill(crate::state::Fill { price: fill_price, qty, fee, ts: last.ts });
+                let realized = inst.state.portfolio.apply_fill(crate::state::Fill {
+                    price: fill_price,
+                    qty,
+                    fee,
+                    ts: last.ts,
+                });
                 inst.state.metrics.pnl += realized;
-                if realized > 0.0 { inst.state.metrics.wins += 1; }
-                else if realized < 0.0 { inst.state.metrics.losses += 1; }
+                if realized > 0.0 {
+                    inst.state.metrics.wins += 1;
+                } else if realized < 0.0 {
+                    inst.state.metrics.losses += 1;
+                }
                 fills_count[idx] += 1;
             }
         }
     }
 
     let total_pnl = strategies.iter().map(|s| s.state.metrics.pnl).sum::<f64>();
-    let max_dd = strategies.iter().map(|s| s.state.metrics.max_drawdown.abs()).fold(0.0, f64::max);
+    let max_dd = strategies
+        .iter()
+        .map(|s| s.state.metrics.max_drawdown.abs())
+        .fold(0.0, f64::max);
     let buy_hold_pnl = match (buy_hold_entry, buy_hold_exit) {
         (Some(e), Some(x)) => x - e,
         _ => 0.0,
     };
 
-    let strat_results: Vec<StrategyResult> = strategies.iter().enumerate().map(|(idx, inst)| {
-        StrategyResult {
+    let strat_results: Vec<StrategyResult> = strategies
+        .iter()
+        .enumerate()
+        .map(|(idx, inst)| StrategyResult {
             id: inst.id.clone(),
             pnl: inst.state.metrics.pnl,
             equity_pnl: inst.state.portfolio.equity - initial_cash,
@@ -603,8 +713,8 @@ pub fn run_backtest_full(cfg: Config, rows: &[CsvRow]) -> Result<BacktestResult>
             wins: inst.state.metrics.wins,
             losses: inst.state.metrics.losses,
             fills: fills_count[idx],
-        }
-    }).collect();
+        })
+        .collect();
 
     Ok(BacktestResult {
         total_pnl,
@@ -685,9 +795,45 @@ mod tests {
     #[test]
     fn test_run_backtest_smoke() {
         let rows = vec![
-            CsvRow { ts: 1000, o: 1.0, h: 1.0, l: 1.0, c: 1.0, v: 1000.0, funding: 0.0, borrow: 0.0, liq: 0.0, depeg: 0.0, oi: 0.0 },
-            CsvRow { ts: 1300, o: 1.0, h: 1.0, l: 1.0, c: 1.1, v: 1100.0, funding: 0.0, borrow: 0.0, liq: 0.0, depeg: 0.0, oi: 0.0 },
-            CsvRow { ts: 1600, o: 1.0, h: 1.0, l: 1.0, c: 0.9, v: 900.0, funding: 0.0, borrow: 0.0, liq: 0.0, depeg: 0.0, oi: 0.0 },
+            CsvRow {
+                ts: 1000,
+                o: 1.0,
+                h: 1.0,
+                l: 1.0,
+                c: 1.0,
+                v: 1000.0,
+                funding: 0.0,
+                borrow: 0.0,
+                liq: 0.0,
+                depeg: 0.0,
+                oi: 0.0,
+            },
+            CsvRow {
+                ts: 1300,
+                o: 1.0,
+                h: 1.0,
+                l: 1.0,
+                c: 1.1,
+                v: 1100.0,
+                funding: 0.0,
+                borrow: 0.0,
+                liq: 0.0,
+                depeg: 0.0,
+                oi: 0.0,
+            },
+            CsvRow {
+                ts: 1600,
+                o: 1.0,
+                h: 1.0,
+                l: 1.0,
+                c: 0.9,
+                v: 900.0,
+                funding: 0.0,
+                borrow: 0.0,
+                liq: 0.0,
+                depeg: 0.0,
+                oi: 0.0,
+            },
         ];
         let cfg = test_cfg();
         let result = run_backtest(cfg, &rows);

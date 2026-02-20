@@ -22,7 +22,10 @@ fn load_rows(path: &str) -> Vec<CsvRow> {
     let mut rows = Vec::new();
     for line in BufReader::new(file).lines().flatten() {
         let trimmed = line.trim();
-        if trimmed.is_empty() || trimmed.starts_with('#') || trimmed.to_lowercase().starts_with("ts,") {
+        if trimmed.is_empty()
+            || trimmed.starts_with('#')
+            || trimmed.to_lowercase().starts_with("ts,")
+        {
             continue;
         }
         if let Ok(r) = parse_csv_line(trimmed) {
@@ -58,7 +61,12 @@ fn s03_backtest_produces_output() {
         assert!(!rows.is_empty(), "{} produced no rows", csv);
         let cfg = Config::from_env();
         let result = run_backtest(cfg, &rows);
-        assert!(result.is_ok(), "backtest failed on {}: {:?}", csv, result.err());
+        assert!(
+            result.is_ok(),
+            "backtest failed on {}: {:?}",
+            csv,
+            result.err()
+        );
     }
 }
 
@@ -141,11 +149,7 @@ fn s08_csv_schema_valid() {
             continue;
         }
         let report = validate_schema(path).unwrap();
-        assert!(
-            report.ok,
-            "schema mismatch in {}: {}",
-            csv, report.message
-        );
+        assert!(report.ok, "schema mismatch in {}: {}", csv, report.message);
         assert_eq!(
             report.columns.len(),
             11,
@@ -231,7 +235,10 @@ fn s12_all_datasets_loadable() {
         loaded += 1;
     }
     // At least one dataset must exist for smoke tests to be meaningful
-    assert!(loaded > 0, "no real datasets found — smoke tests are vacuous");
+    assert!(
+        loaded > 0,
+        "no real datasets found — smoke tests are vacuous"
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -254,7 +261,11 @@ fn s13_cross_regime_consistency() {
         strategy_counts.push((csv.to_string(), rows.len()));
     }
     // All regimes must have been tested
-    assert!(strategy_counts.len() >= 3, "need at least 3 regimes, got {}", strategy_counts.len());
+    assert!(
+        strategy_counts.len() >= 3,
+        "need at least 3 regimes, got {}",
+        strategy_counts.len()
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -294,16 +305,39 @@ fn s15b_structured_backtest_consistent() {
     for s in &result.strategies {
         assert!(s.equity > 0.0, "{} equity <= 0: {:.4}", s.id, s.equity);
         assert!(s.max_drawdown >= 0.0, "{} negative drawdown", s.id);
-        assert!(s.max_drawdown <= 0.05, "{} drawdown > 5%: {:.4}", s.id, s.max_drawdown);
-        assert!(s.friction >= 0.0, "{} negative friction: {:.4}", s.id, s.friction);
-        assert_eq!(s.trades, s.wins + s.losses, "{} trades != wins+losses", s.id);
+        assert!(
+            s.max_drawdown <= 0.05,
+            "{} drawdown > 5%: {:.4}",
+            s.id,
+            s.max_drawdown
+        );
+        assert!(
+            s.friction >= 0.0,
+            "{} negative friction: {:.4}",
+            s.id,
+            s.friction
+        );
+        assert_eq!(
+            s.trades,
+            s.wins + s.losses,
+            "{} trades != wins+losses",
+            s.id
+        );
         // Friction should be proportional to fills (more fills = more friction)
         if s.fills > 0 {
-            assert!(s.friction > 0.0, "{} has {} fills but zero friction", s.id, s.fills);
+            assert!(
+                s.friction > 0.0,
+                "{} has {} fills but zero friction",
+                s.id,
+                s.fills
+            );
         }
     }
     // Buy-hold should be negative for this bear market dataset
-    assert!(result.buy_hold_pnl < 0.0, "buy-hold should be negative for bear data");
+    assert!(
+        result.buy_hold_pnl < 0.0,
+        "buy-hold should be negative for bear data"
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -319,8 +353,18 @@ fn s15_timestamp_sanity() {
         let first_ts = rows.first().unwrap().ts;
         let last_ts = rows.last().unwrap().ts;
         // Timestamps should be between 2024-01-01 and 2026-12-31
-        assert!(first_ts > 1704067200, "{} first ts too old: {}", csv, first_ts);
-        assert!(last_ts < 1798761600, "{} last ts too far future: {}", csv, last_ts);
+        assert!(
+            first_ts > 1704067200,
+            "{} first ts too old: {}",
+            csv,
+            first_ts
+        );
+        assert!(
+            last_ts < 1798761600,
+            "{} last ts too far future: {}",
+            csv,
+            last_ts
+        );
         // Should be in chronological order
         assert!(last_ts >= first_ts, "{} timestamps not ascending", csv);
         // Span should be > 1 day
@@ -335,7 +379,11 @@ fn s15_timestamp_sanity() {
 fn s16_config_hash_deterministic() {
     let cfg1 = Config::from_env();
     let cfg2 = Config::from_env();
-    assert_eq!(cfg1.config_hash(), cfg2.config_hash(), "same config should produce same hash");
+    assert_eq!(
+        cfg1.config_hash(),
+        cfg2.config_hash(),
+        "same config should produce same hash"
+    );
     // Hash should be 64 hex chars (SHA256)
     assert_eq!(cfg1.config_hash().len(), 64, "hash should be 64 hex chars");
 }
@@ -347,11 +395,21 @@ fn s16_config_hash_deterministic() {
 fn s17_config_json_round_trip() {
     let cfg = Config::from_env();
     let json = cfg.to_json();
-    assert!(json.contains("\"symbol\""), "JSON should contain symbol field");
-    assert!(json.contains("\"entry_threshold\""), "JSON should contain entry_threshold");
-    assert!(json.contains("\"min_hold_candles\""), "JSON should contain min_hold_candles");
+    assert!(
+        json.contains("\"symbol\""),
+        "JSON should contain symbol field"
+    );
+    assert!(
+        json.contains("\"entry_threshold\""),
+        "JSON should contain entry_threshold"
+    );
+    assert!(
+        json.contains("\"min_hold_candles\""),
+        "JSON should contain min_hold_candles"
+    );
     // Should be valid JSON
-    let parsed: serde_json::Value = serde_json::from_str(&json).expect("config JSON should be valid");
+    let parsed: serde_json::Value =
+        serde_json::from_str(&json).expect("config JSON should be valid");
     assert!(parsed.is_object(), "parsed config should be an object");
 }
 
@@ -369,12 +427,20 @@ fn s18_backtest_result_has_config_hash() {
     let expected_hash = cfg.config_hash();
     let result = run_backtest_full(cfg, &rows).unwrap();
 
-    assert_eq!(result.config_hash, expected_hash, "result should carry config hash");
-    assert_eq!(result.candle_count, rows.len(), "candle count should match rows");
+    assert_eq!(
+        result.config_hash, expected_hash,
+        "result should carry config hash"
+    );
+    assert_eq!(
+        result.candle_count,
+        rows.len(),
+        "candle count should match rows"
+    );
 
     // Should serialize to valid JSON
     let json = result.to_json();
-    let parsed: serde_json::Value = serde_json::from_str(&json).expect("result JSON should be valid");
+    let parsed: serde_json::Value =
+        serde_json::from_str(&json).expect("result JSON should be valid");
     assert!(parsed["config_hash"].is_string());
     assert!(parsed["strategies"].is_array());
     assert_eq!(parsed["strategies"].as_array().unwrap().len(), 12);
@@ -402,7 +468,7 @@ fn s20_malformed_csv_rejected() {
     assert!(parse_csv_line("").is_err());
     assert!(parse_csv_line("not,enough,columns").is_err());
     assert!(parse_csv_line("abc,1,2,3,4,5,6,7,8,9").is_err()); // non-numeric ts
-    // Valid line should parse
+                                                               // Valid line should parse
     assert!(parse_csv_line("1000,1,1,1,1,10,0.0001,0.0,0.0,0.0,0.0").is_ok());
 }
 
@@ -412,15 +478,26 @@ fn s20_malformed_csv_rejected() {
 #[test]
 fn s21_regime_fractions_sum_to_one() {
     for csv in REAL_CSVS {
-        if !Path::new(csv).exists() { continue; }
+        if !Path::new(csv).exists() {
+            continue;
+        }
         let rows = load_rows(csv);
         let summary = regime::classify_dataset(&rows);
-        let sum = summary.grounded_frac + summary.uncertain_frac
-            + summary.narrative_frac + summary.reflexive_frac;
-        assert!((sum - 1.0).abs() < 0.01,
-            "{}: regime fractions sum to {} (expected ~1.0)", csv, sum);
-        assert_ne!(summary.dominant_regime, "insufficient_data",
-            "{}: should not be insufficient_data", csv);
+        let sum = summary.grounded_frac
+            + summary.uncertain_frac
+            + summary.narrative_frac
+            + summary.reflexive_frac;
+        assert!(
+            (sum - 1.0).abs() < 0.01,
+            "{}: regime fractions sum to {} (expected ~1.0)",
+            csv,
+            sum
+        );
+        assert_ne!(
+            summary.dominant_regime, "insufficient_data",
+            "{}: should not be insufficient_data",
+            csv
+        );
         assert!(!summary.price_trend.is_empty());
     }
 }
@@ -430,10 +507,21 @@ fn s21_regime_fractions_sum_to_one() {
 // ===========================================================================
 #[test]
 fn s22_regime_insufficient_data() {
-    let rows: Vec<CsvRow> = (0..5).map(|i| CsvRow {
-        ts: 1000 + i * 3600, o: 100.0, h: 101.0, l: 99.0, c: 100.0,
-        v: 1000.0, funding: 0.0, borrow: 0.0, liq: 0.0, depeg: 0.0, oi: 0.0,
-    }).collect();
+    let rows: Vec<CsvRow> = (0..5)
+        .map(|i| CsvRow {
+            ts: 1000 + i * 3600,
+            o: 100.0,
+            h: 101.0,
+            l: 99.0,
+            c: 100.0,
+            v: 1000.0,
+            funding: 0.0,
+            borrow: 0.0,
+            liq: 0.0,
+            depeg: 0.0,
+            oi: 0.0,
+        })
+        .collect();
     let summary = regime::classify_dataset(&rows);
     assert_eq!(summary.dominant_regime, "insufficient_data");
 }
@@ -478,10 +566,18 @@ fn s24_narrative_reflexive() {
 #[test]
 fn s25_backtest_traps_enumerable() {
     let traps = backtest_traps::all_traps();
-    assert!(traps.len() >= 18, "expected >=18 traps, got {}", traps.len());
+    assert!(
+        traps.len() >= 18,
+        "expected >=18 traps, got {}",
+        traps.len()
+    );
     for trap in &traps {
         assert!(!trap.name.is_empty(), "trap #{} has empty name", trap.id);
-        assert!(!trap.module.is_empty(), "trap #{} has empty module", trap.id);
+        assert!(
+            !trap.module.is_empty(),
+            "trap #{} has empty module",
+            trap.id
+        );
         assert!(!trap.guard.is_empty(), "trap #{} has empty guard", trap.id);
     }
 }
@@ -492,7 +588,10 @@ fn s25_backtest_traps_enumerable() {
 #[test]
 fn s26_backtest_integrity_check() {
     let checker = backtest_traps::BacktestIntegrity::new();
-    assert!(checker.is_trustworthy(), "empty checker should be trustworthy");
+    assert!(
+        checker.is_trustworthy(),
+        "empty checker should be trustworthy"
+    );
     assert!(checker.violations().is_empty());
 
     let mut checker2 = backtest_traps::BacktestIntegrity::new();
@@ -504,7 +603,10 @@ fn s26_backtest_integrity_check() {
         module_location: "test",
         guard_recommendation: "test",
     });
-    assert!(!checker2.is_trustworthy(), "critical violation should make it untrustworthy");
+    assert!(
+        !checker2.is_trustworthy(),
+        "critical violation should make it untrustworthy"
+    );
     let report = checker2.report();
     assert!(report.contains("Critical violations: 1"));
 }
@@ -516,20 +618,30 @@ fn s26_backtest_integrity_check() {
 fn s27_indicator_bounds() {
     // RSI should be in [0, 100]
     let mut rsi = indicators::Rsi::new(14);
-    for i in 0..50 { rsi.update(100.0 + i as f64); }
+    for i in 0..50 {
+        rsi.update(100.0 + i as f64);
+    }
     let v = rsi.get();
     assert!(v >= 0.0 && v <= 100.0, "RSI out of bounds: {}", v);
 
     // Bollinger: upper >= middle >= lower
     let mut bb = indicators::BollingerBands::default_20_2();
-    for i in 0..30 { bb.update(100.0 + (i % 5) as f64); }
+    for i in 0..30 {
+        bb.update(100.0 + (i % 5) as f64);
+    }
     assert!(bb.upper >= bb.middle, "Bollinger upper < middle");
     assert!(bb.middle >= bb.lower, "Bollinger middle < lower");
 
     // EMA should converge toward input
     let mut ema = indicators::Ema::new(10);
-    for _ in 0..100 { ema.update(42.0); }
-    assert!((ema.get() - 42.0).abs() < 0.01, "EMA didn't converge: {}", ema.get());
+    for _ in 0..100 {
+        ema.update(42.0);
+    }
+    assert!(
+        (ema.get() - 42.0).abs() < 0.01,
+        "EMA didn't converge: {}",
+        ema.get()
+    );
 }
 
 // ===========================================================================
@@ -538,13 +650,15 @@ fn s27_indicator_bounds() {
 #[test]
 fn s28_walk_forward_round_trip() {
     let csv = "data/btc_real_1h.csv";
-    if !Path::new(csv).exists() { return; }
+    if !Path::new(csv).exists() {
+        return;
+    }
     let rows = load_rows(csv);
     let cfg = Config::from_env();
     let result = walk_forward::walk_forward(cfg, &rows, 3, 0.7).unwrap();
     let json = result.to_json();
-    let parsed: serde_json::Value = serde_json::from_str(&json)
-        .expect("walk-forward JSON should be valid");
+    let parsed: serde_json::Value =
+        serde_json::from_str(&json).expect("walk-forward JSON should be valid");
     assert!(parsed["summaries"].is_array());
     assert_eq!(parsed["correction_method"].as_str(), Some("Bonferroni"));
     assert!(parsed["num_comparisons"].as_u64().unwrap() > 0);
@@ -562,14 +676,19 @@ fn s28_walk_forward_round_trip() {
 #[test]
 fn s29_performance_baseline() {
     let csv = "data/btc_real_1h.csv";
-    if !Path::new(csv).exists() { return; }
+    if !Path::new(csv).exists() {
+        return;
+    }
     let rows = load_rows(csv);
     let cfg = Config::from_env();
     let start = std::time::Instant::now();
     let _ = run_backtest_full(cfg, &rows);
     let elapsed = start.elapsed();
-    assert!(elapsed.as_secs() < 5,
-        "1000-candle backtest took {:?} — regression?", elapsed);
+    assert!(
+        elapsed.as_secs() < 5,
+        "1000-candle backtest took {:?} — regression?",
+        elapsed
+    );
 }
 
 // ===========================================================================
@@ -589,5 +708,8 @@ fn s30_config_hash_sensitivity() {
     let mut cfg2 = cfg.clone();
     cfg2.entry_threshold = 999.999;
     let hash2 = cfg2.config_hash();
-    assert_ne!(hash1, hash2, "different config should produce different hash");
+    assert_ne!(
+        hash1, hash2,
+        "different config should produce different hash"
+    );
 }

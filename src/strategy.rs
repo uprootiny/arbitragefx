@@ -37,12 +37,20 @@ pub struct AuxRequirements {
 impl AuxRequirements {
     /// Funding carry strategy needs funding rate
     pub fn for_funding_carry() -> Self {
-        Self { needs_funding: true, needs_borrow: true, ..Default::default() }
+        Self {
+            needs_funding: true,
+            needs_borrow: true,
+            ..Default::default()
+        }
     }
 
     /// Event-driven strategy needs liquidation data
     pub fn for_event_driven() -> Self {
-        Self { needs_liquidations: true, needs_depeg: true, ..Default::default() }
+        Self {
+            needs_liquidations: true,
+            needs_depeg: true,
+            ..Default::default()
+        }
     }
 
     /// Mean reversion can work with minimal aux data
@@ -52,7 +60,12 @@ impl AuxRequirements {
 
     /// Full aux data for comprehensive strategies
     pub fn full() -> Self {
-        Self { needs_funding: true, needs_borrow: true, needs_liquidations: true, needs_depeg: true }
+        Self {
+            needs_funding: true,
+            needs_borrow: true,
+            needs_liquidations: true,
+            needs_depeg: true,
+        }
     }
 
     pub fn is_empty(&self) -> bool {
@@ -76,10 +89,10 @@ impl MarketAux {
 
     /// Check against specific requirements
     pub fn meets_requirements(&self, reqs: &AuxRequirements) -> bool {
-        (!reqs.needs_funding || self.has_funding) &&
-        (!reqs.needs_borrow || self.has_borrow) &&
-        (!reqs.needs_liquidations || self.has_liquidations) &&
-        (!reqs.needs_depeg || self.has_depeg)
+        (!reqs.needs_funding || self.has_funding)
+            && (!reqs.needs_borrow || self.has_borrow)
+            && (!reqs.needs_liquidations || self.has_liquidations)
+            && (!reqs.needs_depeg || self.has_depeg)
     }
 
     /// Check if aux data is valid for trading decisions
@@ -88,13 +101,22 @@ impl MarketAux {
     }
 
     /// Check validity with specific requirements
-    pub fn is_valid_for_strategy(&self, now_ts: u64, max_age_secs: u64, reqs: &AuxRequirements) -> bool {
+    pub fn is_valid_for_strategy(
+        &self,
+        now_ts: u64,
+        max_age_secs: u64,
+        reqs: &AuxRequirements,
+    ) -> bool {
         !self.is_stale(now_ts, max_age_secs) && self.meets_requirements(reqs)
     }
 
     /// Age of data in seconds
     pub fn age_secs(&self, now_ts: u64) -> u64 {
-        if self.fetch_ts == 0 { u64::MAX } else { now_ts.saturating_sub(self.fetch_ts) }
+        if self.fetch_ts == 0 {
+            u64::MAX
+        } else {
+            now_ts.saturating_sub(self.fetch_ts)
+        }
     }
 }
 
@@ -189,7 +211,12 @@ mod tests {
             entry_price: 0.0,
             equity: 100.0,
         };
-        let realized = p.apply_fill(Fill { price: 10.0, qty: 1.0, fee: 1.0, ts: 0 });
+        let realized = p.apply_fill(Fill {
+            price: 10.0,
+            qty: 1.0,
+            fee: 1.0,
+            ts: 0,
+        });
         assert_eq!(realized, 0.0);
         assert!((p.cash - 89.0).abs() < 1e-9);
     }
@@ -204,14 +231,25 @@ mod tests {
         assert!(
             (p.equity - expected).abs() < 1e-6,
             "EQUITY INVARIANT VIOLATED: equity={:.6}, cash+pos*price={:.6}",
-            p.equity, expected
+            p.equity,
+            expected
         );
     }
 
     #[test]
     fn invariant_equity_after_buy() {
-        let mut p = PortfolioState { cash: 1000.0, position: 0.0, entry_price: 0.0, equity: 1000.0 };
-        p.apply_fill(Fill { price: 100.0, qty: 1.0, fee: 0.1, ts: 0 });
+        let mut p = PortfolioState {
+            cash: 1000.0,
+            position: 0.0,
+            entry_price: 0.0,
+            equity: 1000.0,
+        };
+        p.apply_fill(Fill {
+            price: 100.0,
+            qty: 1.0,
+            fee: 0.1,
+            ts: 0,
+        });
         assert_equity_invariant(&p, 100.0);
         assert_eq!(p.position, 1.0);
         assert_eq!(p.entry_price, 100.0);
@@ -219,16 +257,36 @@ mod tests {
 
     #[test]
     fn invariant_equity_after_sell() {
-        let mut p = PortfolioState { cash: 1000.0, position: 0.0, entry_price: 0.0, equity: 1000.0 };
-        p.apply_fill(Fill { price: 100.0, qty: -1.0, fee: 0.1, ts: 0 });
+        let mut p = PortfolioState {
+            cash: 1000.0,
+            position: 0.0,
+            entry_price: 0.0,
+            equity: 1000.0,
+        };
+        p.apply_fill(Fill {
+            price: 100.0,
+            qty: -1.0,
+            fee: 0.1,
+            ts: 0,
+        });
         assert_equity_invariant(&p, 100.0);
         assert_eq!(p.position, -1.0);
     }
 
     #[test]
     fn invariant_equity_after_close_long() {
-        let mut p = PortfolioState { cash: 900.0, position: 1.0, entry_price: 100.0, equity: 1000.0 };
-        let realized = p.apply_fill(Fill { price: 110.0, qty: -1.0, fee: 0.1, ts: 0 });
+        let mut p = PortfolioState {
+            cash: 900.0,
+            position: 1.0,
+            entry_price: 100.0,
+            equity: 1000.0,
+        };
+        let realized = p.apply_fill(Fill {
+            price: 110.0,
+            qty: -1.0,
+            fee: 0.1,
+            ts: 0,
+        });
         assert_equity_invariant(&p, 110.0);
         assert_eq!(p.position, 0.0);
         // Closing long at 110 from entry 100: realized = (110-100)*1*1 = 10
@@ -237,8 +295,18 @@ mod tests {
 
     #[test]
     fn invariant_equity_after_close_short() {
-        let mut p = PortfolioState { cash: 1100.0, position: -1.0, entry_price: 100.0, equity: 1000.0 };
-        let realized = p.apply_fill(Fill { price: 90.0, qty: 1.0, fee: 0.1, ts: 0 });
+        let mut p = PortfolioState {
+            cash: 1100.0,
+            position: -1.0,
+            entry_price: 100.0,
+            equity: 1000.0,
+        };
+        let realized = p.apply_fill(Fill {
+            price: 90.0,
+            qty: 1.0,
+            fee: 0.1,
+            ts: 0,
+        });
         assert_equity_invariant(&p, 90.0);
         assert_eq!(p.position, 0.0);
         // Closing short at 90 from entry 100: realized = (90-100)*1*(-1) = 10
@@ -247,40 +315,84 @@ mod tests {
 
     #[test]
     fn invariant_equity_after_flip() {
-        let mut p = PortfolioState { cash: 900.0, position: 1.0, entry_price: 100.0, equity: 1000.0 };
-        let realized = p.apply_fill(Fill { price: 105.0, qty: -2.0, fee: 0.1, ts: 0 });
+        let mut p = PortfolioState {
+            cash: 900.0,
+            position: 1.0,
+            entry_price: 100.0,
+            equity: 1000.0,
+        };
+        let realized = p.apply_fill(Fill {
+            price: 105.0,
+            qty: -2.0,
+            fee: 0.1,
+            ts: 0,
+        });
         assert_equity_invariant(&p, 105.0);
         assert_eq!(p.position, -1.0);
         assert_eq!(p.entry_price, 105.0); // Flipped: new entry is fill price
-        // Realized from closing the long 1.0: (105-100)*1*1 = 5
+                                          // Realized from closing the long 1.0: (105-100)*1*1 = 5
         assert!((realized - 5.0).abs() < 1e-9, "realized={}", realized);
     }
 
     #[test]
     fn invariant_equity_after_add_to_position() {
-        let mut p = PortfolioState { cash: 900.0, position: 1.0, entry_price: 100.0, equity: 1000.0 };
-        p.apply_fill(Fill { price: 120.0, qty: 1.0, fee: 0.1, ts: 0 });
+        let mut p = PortfolioState {
+            cash: 900.0,
+            position: 1.0,
+            entry_price: 100.0,
+            equity: 1000.0,
+        };
+        p.apply_fill(Fill {
+            price: 120.0,
+            qty: 1.0,
+            fee: 0.1,
+            ts: 0,
+        });
         assert_equity_invariant(&p, 120.0);
         assert_eq!(p.position, 2.0);
         // Weighted average entry: (100*1 + 120*1) / 2 = 110
-        assert!((p.entry_price - 110.0).abs() < 1e-9, "entry_price={}", p.entry_price);
+        assert!(
+            (p.entry_price - 110.0).abs() < 1e-9,
+            "entry_price={}",
+            p.entry_price
+        );
     }
 
     #[test]
     fn invariant_equity_after_partial_reduce() {
-        let mut p = PortfolioState { cash: 800.0, position: 2.0, entry_price: 100.0, equity: 1000.0 };
-        let realized = p.apply_fill(Fill { price: 110.0, qty: -1.0, fee: 0.1, ts: 0 });
+        let mut p = PortfolioState {
+            cash: 800.0,
+            position: 2.0,
+            entry_price: 100.0,
+            equity: 1000.0,
+        };
+        let realized = p.apply_fill(Fill {
+            price: 110.0,
+            qty: -1.0,
+            fee: 0.1,
+            ts: 0,
+        });
         assert_equity_invariant(&p, 110.0);
         assert_eq!(p.position, 1.0);
         assert_eq!(p.entry_price, 100.0); // Entry unchanged on partial reduce
-        // Realized: (110-100)*1*1 = 10
+                                          // Realized: (110-100)*1*1 = 10
         assert!((realized - 10.0).abs() < 1e-9, "realized={}", realized);
     }
 
     #[test]
     fn invariant_zero_fill_is_noop() {
-        let mut p = PortfolioState { cash: 1000.0, position: 1.0, entry_price: 100.0, equity: 1100.0 };
-        let realized = p.apply_fill(Fill { price: 200.0, qty: 0.0, fee: 0.0, ts: 0 });
+        let mut p = PortfolioState {
+            cash: 1000.0,
+            position: 1.0,
+            entry_price: 100.0,
+            equity: 1100.0,
+        };
+        let realized = p.apply_fill(Fill {
+            price: 200.0,
+            qty: 0.0,
+            fee: 0.0,
+            ts: 0,
+        });
         assert_eq!(realized, 0.0);
         assert_eq!(p.cash, 1000.0);
         assert_eq!(p.position, 1.0);
@@ -289,15 +401,29 @@ mod tests {
     /// Property: across many random-ish fill sequences, equity invariant never violated.
     #[test]
     fn invariant_equity_survives_sequence() {
-        let mut p = PortfolioState { cash: 10000.0, position: 0.0, entry_price: 0.0, equity: 10000.0 };
+        let mut p = PortfolioState {
+            cash: 10000.0,
+            position: 0.0,
+            entry_price: 0.0,
+            equity: 10000.0,
+        };
         let fills = vec![
-            (100.0, 1.0), (105.0, 1.0), (110.0, -0.5), (95.0, -1.5),  // long, add, partial reduce, close+short
+            (100.0, 1.0),
+            (105.0, 1.0),
+            (110.0, -0.5),
+            (95.0, -1.5), // long, add, partial reduce, close+short
             (90.0, 1.0),  // close short
-            (100.0, 2.0), (120.0, -3.0), // long 2, flip to short 1
-            (110.0, 1.0), // close short
+            (100.0, 2.0),
+            (120.0, -3.0), // long 2, flip to short 1
+            (110.0, 1.0),  // close short
         ];
         for (price, qty) in fills {
-            p.apply_fill(Fill { price, qty, fee: 0.01, ts: 0 });
+            p.apply_fill(Fill {
+                price,
+                qty,
+                fee: 0.01,
+                ts: 0,
+            });
             assert_equity_invariant(&p, price);
         }
     }
@@ -340,8 +466,16 @@ impl MetricsState {
             return 0.0;
         }
         let win_rate = self.wins as f64 / total as f64;
-        let avg_win = if self.wins > 0 { self.total_win_amount / self.wins as f64 } else { 0.0 };
-        let avg_loss = if self.losses > 0 { self.total_loss_amount / self.losses as f64 } else { 0.0 };
+        let avg_win = if self.wins > 0 {
+            self.total_win_amount / self.wins as f64
+        } else {
+            0.0
+        };
+        let avg_loss = if self.losses > 0 {
+            self.total_loss_amount / self.losses as f64
+        } else {
+            0.0
+        };
         (win_rate * avg_win) - ((1.0 - win_rate) * avg_loss)
     }
 

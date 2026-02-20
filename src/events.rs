@@ -67,8 +67,7 @@ pub fn detect_phase1(ts: u64, f: &FeatureSnapshot, cfg: &EventConfig) -> Vec<Eve
     }
 
     // 2) Liquidation cascade momentum: velocity spike + liq score.
-    if f.price_velocity.abs() > cfg.vel_mult * f.vol_ratio
-        && f.liquidation_score > cfg.liq_score_th
+    if f.price_velocity.abs() > cfg.vel_mult * f.vol_ratio && f.liquidation_score > cfg.liq_score_th
     {
         out.push(Event {
             ts,

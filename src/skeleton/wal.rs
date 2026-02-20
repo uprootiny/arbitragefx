@@ -13,7 +13,9 @@ impl Wal {
             create_dir_all(parent)?;
         }
         let file = OpenOptions::new().create(true).append(true).open(path)?;
-        Ok(Self { writer: BufWriter::new(file) })
+        Ok(Self {
+            writer: BufWriter::new(file),
+        })
     }
 
     pub fn append(&mut self, line: &str) {

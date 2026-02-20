@@ -75,10 +75,7 @@ pub fn analyze_csv(
             continue;
         }
         if trimmed.to_lowercase().starts_with("ts,") && header.is_empty() {
-            header = trimmed
-                .split(',')
-                .map(|s| s.trim().to_string())
-                .collect();
+            header = trimmed.split(',').map(|s| s.trim().to_string()).collect();
             continue;
         }
         match parse_ts(trimmed) {
@@ -144,7 +141,10 @@ pub fn analyze_csv(
 
 pub fn validate_schema(path: &Path) -> Result<SchemaReport, String> {
     let header = read_header(path)?;
-    let expected = EXPECTED_COLUMNS.iter().map(|s| s.to_string()).collect::<Vec<_>>();
+    let expected = EXPECTED_COLUMNS
+        .iter()
+        .map(|s| s.to_string())
+        .collect::<Vec<_>>();
     let ok = header == expected;
     let message = if ok {
         "schema ok".to_string()

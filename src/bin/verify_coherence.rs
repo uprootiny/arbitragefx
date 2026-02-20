@@ -80,7 +80,10 @@ fn verify_micro(events: &[LogEntry], trace: &[LogEntry]) -> MicroStats {
         .filter(|e| e.event == "fill")
         .map(|e| {
             let sid = e.strategy_id.clone().or_else(|| {
-                e.data.get("strategy_id").and_then(|v| v.as_str()).map(|s| s.to_string())
+                e.data
+                    .get("strategy_id")
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.to_string())
             });
             ((e.ts.clone(), sid), e)
         })
@@ -232,7 +235,11 @@ fn main() {
     );
     println!(
         "  PnL monotonic: {}",
-        if meso.checkpoint_pnl_monotonic { "yes" } else { "no (expected for trading)" }
+        if meso.checkpoint_pnl_monotonic {
+            "yes"
+        } else {
+            "no (expected for trading)"
+        }
     );
     let meso_ok = meso.seq_gaps < 10 && meso.checkpoint_count > 0;
     println!("  Status: {}", if meso_ok { "✓ OK" } else { "⚠ Issues" });
@@ -243,7 +250,10 @@ fn main() {
     println!("  Unique state hashes: {}", mac.unique_state_hashes);
     println!("  Hash collisions: {}", mac.hash_collisions);
     let macro_ok = mac.unique_state_hashes > 0;
-    println!("  Status: {}", if macro_ok { "✓ OK" } else { "⚠ No hashes" });
+    println!(
+        "  Status: {}",
+        if macro_ok { "✓ OK" } else { "⚠ No hashes" }
+    );
 
     // Summary
     println!("\n=== Summary ===");
@@ -263,8 +273,14 @@ fn main() {
     }
     let pnl_delta = meso.last_checkpoint_pnl - meso.first_checkpoint_pnl;
     if pnl_delta < 0.0 {
-        println!("  PnL declining ({:.2}) - consider strategy adjustment", pnl_delta);
+        println!(
+            "  PnL declining ({:.2}) - consider strategy adjustment",
+            pnl_delta
+        );
     } else {
-        println!("  PnL positive ({:.2}) - strategy may be working", pnl_delta);
+        println!(
+            "  PnL positive ({:.2}) - strategy may be working",
+            pnl_delta
+        );
     }
 }

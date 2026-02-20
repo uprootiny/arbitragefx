@@ -1,15 +1,15 @@
 use std::collections::HashMap;
 
 use crate::adapter::unified::UnifiedAdapter;
+use crate::feed::binance_live::FillEvent;
 use crate::logging::{json_log, obj, params_hash, v_num, v_str};
-use crate::state::MarketState;
-use crate::reliability::circuit::CircuitBreaker;
 use crate::reconcile::binance::BinanceReconcileClient;
+use crate::reliability::circuit::CircuitBreaker;
 use crate::reliability::{state::OrderBook, wal::Wal};
+use crate::state::MarketState;
 use crate::state::{Config, StrategyInstance};
 use crate::verify::order_sm::{Event, OrderState};
 use tokio::sync::mpsc;
-use crate::feed::binance_live::FillEvent;
 
 #[derive(Debug, Clone)]
 pub struct PendingMeta {
@@ -73,7 +73,11 @@ pub fn process_fills(
                     }
                 }
 
-                let signed_qty = if fill.side == "BUY" { fill.qty } else { -fill.qty };
+                let signed_qty = if fill.side == "BUY" {
+                    fill.qty
+                } else {
+                    -fill.qty
+                };
                 let realized = inst.state.portfolio.apply_fill(crate::state::Fill {
                     price: fill.price,
                     qty: signed_qty,
@@ -183,7 +187,8 @@ pub async fn reconcile_binance(
             if let (Some(q), Some(b)) = (quote_balance, base_balance) {
                 let local_pos: f64 = strategies.iter().map(|s| s.state.portfolio.position).sum();
                 let drift = (local_pos - b).abs();
-                let thresh = (local_pos.abs() * cfg.reconcile_drift_pct).max(cfg.reconcile_drift_abs);
+                let thresh =
+                    (local_pos.abs() * cfg.reconcile_drift_pct).max(cfg.reconcile_drift_abs);
                 if drift > thresh {
                     for inst in strategies.iter_mut() {
                         inst.state.trading_halted = true;
@@ -260,7 +265,9 @@ pub fn cancel_stale_orders(
     order_book: &mut OrderBook,
     wal: &mut Wal,
 ) {
-    let cancel_after = cfg.cancel_after_candles.saturating_mul(cfg.candle_granularity);
+    let cancel_after = cfg
+        .cancel_after_candles
+        .saturating_mul(cfg.candle_granularity);
     if cancel_after == 0 {
         return;
     }

@@ -26,7 +26,11 @@ impl Ema {
     }
 
     pub fn with_alpha(alpha: f64) -> Self {
-        Self { value: 0.0, alpha, initialized: false }
+        Self {
+            value: 0.0,
+            alpha,
+            initialized: false,
+        }
     }
 
     pub fn update(&mut self, price: f64) -> f64 {
@@ -116,7 +120,11 @@ impl RollingStd {
         }
 
         self.mean = self.window.iter().sum::<f64>() / n;
-        self.m2 = self.window.iter().map(|x| (x - self.mean).powi(2)).sum::<f64>();
+        self.m2 = self
+            .window
+            .iter()
+            .map(|x| (x - self.mean).powi(2))
+            .sum::<f64>();
 
         (self.m2 / (n - 1.0)).sqrt()
     }
@@ -169,8 +177,10 @@ impl Rsi {
 
             if self.count <= self.period {
                 // Initial SMA period
-                self.avg_gain = (self.avg_gain * (self.count - 1) as f64 + gain) / self.count as f64;
-                self.avg_loss = (self.avg_loss * (self.count - 1) as f64 + loss) / self.count as f64;
+                self.avg_gain =
+                    (self.avg_gain * (self.count - 1) as f64 + gain) / self.count as f64;
+                self.avg_loss =
+                    (self.avg_loss * (self.count - 1) as f64 + loss) / self.count as f64;
             } else {
                 // Smoothed average (Wilder's smoothing)
                 let alpha = 1.0 / self.period as f64;
@@ -473,12 +483,14 @@ impl PatternDetector {
             }
 
             // Hammer: small body at top, long lower wick
-            if c.body_ratio() < 0.3 && c.lower_wick() > c.body() * 2.0 && c.upper_wick() < c.body() {
+            if c.body_ratio() < 0.3 && c.lower_wick() > c.body() * 2.0 && c.upper_wick() < c.body()
+            {
                 patterns.push(CandlePattern::Hammer);
             }
 
             // Inverted hammer: small body at bottom, long upper wick
-            if c.body_ratio() < 0.3 && c.upper_wick() > c.body() * 2.0 && c.lower_wick() < c.body() {
+            if c.body_ratio() < 0.3 && c.upper_wick() > c.body() * 2.0 && c.lower_wick() < c.body()
+            {
                 patterns.push(CandlePattern::InvertedHammer);
             }
         }
@@ -489,15 +501,19 @@ impl PatternDetector {
             let curr = *self.candles.back().unwrap();
 
             // Bullish engulfing
-            if prev.is_bearish() && curr.is_bullish()
-                && curr.open < prev.close && curr.close > prev.open
+            if prev.is_bearish()
+                && curr.is_bullish()
+                && curr.open < prev.close
+                && curr.close > prev.open
             {
                 patterns.push(CandlePattern::BullishEngulfing);
             }
 
             // Bearish engulfing
-            if prev.is_bullish() && curr.is_bearish()
-                && curr.open > prev.close && curr.close < prev.open
+            if prev.is_bullish()
+                && curr.is_bearish()
+                && curr.open > prev.close
+                && curr.close < prev.open
             {
                 patterns.push(CandlePattern::BearishEngulfing);
             }
@@ -515,17 +531,25 @@ impl PatternDetector {
             let c3 = *self.candles.back().unwrap();
 
             // Three white soldiers
-            if c1.is_bullish() && c2.is_bullish() && c3.is_bullish()
-                && c2.close > c1.close && c3.close > c2.close
-                && c2.open > c1.open && c3.open > c2.open
+            if c1.is_bullish()
+                && c2.is_bullish()
+                && c3.is_bullish()
+                && c2.close > c1.close
+                && c3.close > c2.close
+                && c2.open > c1.open
+                && c3.open > c2.open
             {
                 patterns.push(CandlePattern::ThreeWhiteSoldiers);
             }
 
             // Three black crows
-            if c1.is_bearish() && c2.is_bearish() && c3.is_bearish()
-                && c2.close < c1.close && c3.close < c2.close
-                && c2.open < c1.open && c3.open < c2.open
+            if c1.is_bearish()
+                && c2.is_bearish()
+                && c3.is_bearish()
+                && c2.close < c1.close
+                && c3.close < c2.close
+                && c2.open < c1.open
+                && c3.open < c2.open
             {
                 patterns.push(CandlePattern::ThreeBlackCrows);
             }
@@ -540,9 +564,11 @@ impl PatternDetector {
             }
 
             // Evening star
-            if c1.is_bullish() && c1.body() > atr * 0.5
+            if c1.is_bullish()
+                && c1.body() > atr * 0.5
                 && c2.body() < atr * 0.2
-                && c3.is_bearish() && c3.body() > atr * 0.5
+                && c3.is_bearish()
+                && c3.body() > atr * 0.5
                 && c3.close < (c1.open + c1.close) / 2.0
             {
                 patterns.push(CandlePattern::EveningStar);
@@ -612,11 +638,15 @@ impl SupportResistance {
         // Find local extrema
         for i in 2..prices.len() - 2 {
             let is_extreme = if is_resistance {
-                prices[i] > prices[i - 1] && prices[i] > prices[i - 2]
-                    && prices[i] > prices[i + 1] && prices[i] > prices[i + 2]
+                prices[i] > prices[i - 1]
+                    && prices[i] > prices[i - 2]
+                    && prices[i] > prices[i + 1]
+                    && prices[i] > prices[i + 2]
             } else {
-                prices[i] < prices[i - 1] && prices[i] < prices[i - 2]
-                    && prices[i] < prices[i + 1] && prices[i] < prices[i + 2]
+                prices[i] < prices[i - 1]
+                    && prices[i] < prices[i - 2]
+                    && prices[i] < prices[i + 1]
+                    && prices[i] < prices[i + 2]
             };
 
             if is_extreme {
@@ -688,7 +718,7 @@ mod tests {
         // Consistent gains → RSI should be high
         let mut price = 100.0;
         for _ in 0..50 {
-            price += 1.0;  // Each update is a gain
+            price += 1.0; // Each update is a gain
             rsi.update(price);
         }
         assert!(rsi.get() > 50.0, "RSI was {}", rsi.get());
@@ -709,10 +739,20 @@ mod tests {
         let mut detector = PatternDetector::new();
         // Initialize with some normal candles
         for _ in 0..5 {
-            detector.update(Candle { open: 100.0, high: 102.0, low: 98.0, close: 101.0 });
+            detector.update(Candle {
+                open: 100.0,
+                high: 102.0,
+                low: 98.0,
+                close: 101.0,
+            });
         }
         // Doji candle
-        let patterns = detector.update(Candle { open: 100.0, high: 102.0, low: 98.0, close: 100.01 });
+        let patterns = detector.update(Candle {
+            open: 100.0,
+            high: 102.0,
+            low: 98.0,
+            close: 100.01,
+        });
         assert!(patterns.contains(&CandlePattern::Doji));
     }
 }

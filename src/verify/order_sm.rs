@@ -37,11 +37,19 @@ impl Order {
 #[derive(Debug, Clone)]
 pub enum Event {
     Submit,
-    Ack { order_id: String },
-    Fill { fill_id: String, qty: f64, price: f64 },
+    Ack {
+        order_id: String,
+    },
+    Fill {
+        fill_id: String,
+        qty: f64,
+        price: f64,
+    },
     CancelRequest,
     CancelAck,
-    Reject { reason: String },
+    Reject {
+        reason: String,
+    },
     Timeout,
 }
 

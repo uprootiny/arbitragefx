@@ -1,5 +1,5 @@
-use crate::strategy::{Action, StrategyState};
 use crate::state::Config;
+use crate::strategy::{Action, StrategyState};
 
 /// Kelly criterion position sizing
 pub fn kelly_size(win_rate: f64, avg_win: f64, avg_loss: f64, equity: f64, fraction: f64) -> f64 {
@@ -9,7 +9,7 @@ pub fn kelly_size(win_rate: f64, avg_win: f64, avg_loss: f64, equity: f64, fract
     let win_loss_ratio = avg_win / avg_loss;
     let kelly = win_rate - (1.0 - win_rate) / win_loss_ratio;
     if kelly <= 0.0 {
-        return 0.0;  // Negative edge, don't trade
+        return 0.0; // Negative edge, don't trade
     }
     (kelly * fraction * equity).max(0.0)
 }
@@ -30,14 +30,19 @@ pub fn risk_of_ruin(win_rate: f64, risk_per_trade: f64, account_units: f64) -> f
 }
 
 /// Fill probability for limit orders (adverse selection model)
-pub fn limit_fill_probability(limit_price: f64, market_price: f64, volatility: f64, is_buy: bool) -> f64 {
+pub fn limit_fill_probability(
+    limit_price: f64,
+    market_price: f64,
+    volatility: f64,
+    is_buy: bool,
+) -> f64 {
     if volatility <= 0.0 {
         return 0.5;
     }
     let distance = if is_buy {
-        (market_price - limit_price) / market_price  // How far below market
+        (market_price - limit_price) / market_price // How far below market
     } else {
-        (limit_price - market_price) / market_price  // How far above market
+        (limit_price - market_price) / market_price // How far above market
     };
 
     if distance < 0.0 {
@@ -102,8 +107,14 @@ mod tests {
         // Buy limit below market = only fills if price drops (lower probability)
         let prob_at = limit_fill_probability(100.0, 100.0, 0.02, true);
         let prob_below = limit_fill_probability(99.0, 100.0, 0.02, true);
-        assert!(prob_at > prob_below, "Limit at market should fill more often than below");
-        assert!(prob_below > 0.0, "Limit below should still have some fill probability");
+        assert!(
+            prob_at > prob_below,
+            "Limit at market should fill more often than below"
+        );
+        assert!(
+            prob_below > 0.0,
+            "Limit below should still have some fill probability"
+        );
         assert!(prob_below < 1.0, "Limit below should not guarantee fill");
     }
 
@@ -113,31 +124,39 @@ mod tests {
         let mut engine = RiskEngine::new(cfg);
 
         // Record enough trades (minimum 5 for expectancy calculation)
-        engine.record_trade(10.0);  // Win
-        engine.record_trade(10.0);  // Win
-        engine.record_trade(-5.0);  // Loss
-        engine.record_trade(10.0);  // Win
-        engine.record_trade(10.0);  // Win
-        engine.record_trade(-5.0);  // Loss
+        engine.record_trade(10.0); // Win
+        engine.record_trade(10.0); // Win
+        engine.record_trade(-5.0); // Loss
+        engine.record_trade(10.0); // Win
+        engine.record_trade(10.0); // Win
+        engine.record_trade(-5.0); // Loss
 
         // 4 wins, 2 losses = 66.7% win rate
         // Avg win = 10, avg loss = 5, ratio = 2
         // Expectancy = 0.667 * 10 - 0.333 * 5 = 6.67 - 1.67 = 5.0
         let exp = engine.current_expectancy();
-        assert!(exp > 0.0, "Expectancy should be positive with 4W/2L at 2:1 ratio");
+        assert!(
+            exp > 0.0,
+            "Expectancy should be positive with 4W/2L at 2:1 ratio"
+        );
     }
 
     fn make_config() -> Config {
         let mut cfg = Config::from_env();
-        cfg.max_daily_loss_pct = 0.05;    // 5% max daily loss
-        cfg.max_position_pct = 0.10;       // 10% max position
+        cfg.max_daily_loss_pct = 0.05; // 5% max daily loss
+        cfg.max_position_pct = 0.10; // 10% max position
         cfg.cooldown_secs = 60;
         cfg.max_trades_per_day = 20;
         cfg.kill_file = "/tmp/nonexistent_kill_file".to_string();
         cfg
     }
 
-    fn make_state(position: f64, entry_price: f64, equity: f64, realized_pnl: f64) -> StrategyState {
+    fn make_state(
+        position: f64,
+        entry_price: f64,
+        equity: f64,
+        realized_pnl: f64,
+    ) -> StrategyState {
         StrategyState {
             portfolio: PortfolioState {
                 cash: equity - (position * entry_price),
@@ -175,7 +194,11 @@ mod tests {
         let action = engine.apply_with_price(&state, Action::Hold, 1000, 45000.0);
 
         // Should force close due to unrealized loss
-        assert!(matches!(action, Action::Close), "Expected Close, got {:?}", action);
+        assert!(
+            matches!(action, Action::Close),
+            "Expected Close, got {:?}",
+            action
+        );
     }
 
     #[test]
@@ -191,7 +214,11 @@ mod tests {
         let action = engine.apply_with_price(&state, Action::Buy { qty: 0.01 }, 1000, 47000.0);
 
         // Should force close
-        assert!(matches!(action, Action::Close), "Expected Close at limit, got {:?}", action);
+        assert!(
+            matches!(action, Action::Close),
+            "Expected Close at limit, got {:?}",
+            action
+        );
     }
 
     #[test]
@@ -208,7 +235,11 @@ mod tests {
         let action = engine.apply_with_price(&state, Action::Buy { qty: 0.001 }, 1000, 50500.0);
 
         // Should allow trading (within limits)
-        assert!(matches!(action, Action::Buy { .. }), "Expected Buy allowed, got {:?}", action);
+        assert!(
+            matches!(action, Action::Buy { .. }),
+            "Expected Buy allowed, got {:?}",
+            action
+        );
     }
 
     #[test]
@@ -224,7 +255,11 @@ mod tests {
         let action = engine.apply_with_price(&state, Action::Buy { qty: 0.5 }, 1000, 1000.0);
 
         // Should block (over 10% limit)
-        assert!(matches!(action, Action::Hold), "Expected Hold due to exposure, got {:?}", action);
+        assert!(
+            matches!(action, Action::Hold),
+            "Expected Hold due to exposure, got {:?}",
+            action
+        );
     }
 
     #[test]
@@ -237,11 +272,17 @@ mod tests {
 
         // Close should be allowed
         let close_action = engine.apply_with_price(&state, Action::Close, 1000, 1000.0);
-        assert!(matches!(close_action, Action::Close), "Close should be allowed");
+        assert!(
+            matches!(close_action, Action::Close),
+            "Close should be allowed"
+        );
 
         // Sell should be allowed (reduces long exposure)
         let sell_action = engine.apply_with_price(&state, Action::Sell { qty: 0.5 }, 1000, 1000.0);
-        assert!(matches!(sell_action, Action::Sell { .. }), "Sell should be allowed");
+        assert!(
+            matches!(sell_action, Action::Sell { .. }),
+            "Sell should be allowed"
+        );
     }
 
     #[test]
@@ -256,7 +297,11 @@ mod tests {
         let action = engine.apply_with_price(&state, Action::Hold, 1000, 55000.0);
 
         // Should force close
-        assert!(matches!(action, Action::Close), "Expected Close on short loss, got {:?}", action);
+        assert!(
+            matches!(action, Action::Close),
+            "Expected Close on short loss, got {:?}",
+            action
+        );
     }
 
     #[test]
@@ -271,7 +316,11 @@ mod tests {
         let action = engine.apply_with_price(&state, Action::Buy { qty: 0.1 }, 1000, 50000.0);
 
         // Should allow new trade
-        assert!(matches!(action, Action::Buy { .. }), "Expected Buy allowed, got {:?}", action);
+        assert!(
+            matches!(action, Action::Buy { .. }),
+            "Expected Buy allowed, got {:?}",
+            action
+        );
     }
 
     #[test]
@@ -280,13 +329,17 @@ mod tests {
         let mut engine = RiskEngine::new(cfg);
 
         let mut state = make_state(0.0, 0.0, 10000.0, -100.0);
-        state.last_loss_ts = 950;  // Loss was 50 seconds ago
+        state.last_loss_ts = 950; // Loss was 50 seconds ago
 
         // Try to trade at ts=1000, cooldown is 60s
         let action = engine.apply_with_price(&state, Action::Buy { qty: 0.1 }, 1000, 50000.0);
 
         // Should block due to cooldown
-        assert!(matches!(action, Action::Hold), "Expected Hold during cooldown, got {:?}", action);
+        assert!(
+            matches!(action, Action::Hold),
+            "Expected Hold during cooldown, got {:?}",
+            action
+        );
     }
 }
 
@@ -317,7 +370,7 @@ impl RiskEngine {
         let total_trades = self.recent_wins + self.recent_losses;
         if total_trades < 10 {
             // Not enough data, use fixed small size
-            return equity * 0.01;  // 1% of equity
+            return equity * 0.01; // 1% of equity
         }
         let win_rate = self.recent_wins as f64 / total_trades as f64;
         let avg_win = if self.recent_wins > 0 {
@@ -328,9 +381,9 @@ impl RiskEngine {
         let avg_loss = if self.recent_losses > 0 {
             self.total_loss_amount / self.recent_losses as f64
         } else {
-            1.0  // Avoid division by zero
+            1.0 // Avoid division by zero
         };
-        kelly_size(win_rate, avg_win, avg_loss, equity, 0.25)  // 1/4 Kelly
+        kelly_size(win_rate, avg_win, avg_loss, equity, 0.25) // 1/4 Kelly
     }
 
     /// Get current expectancy per trade
@@ -373,7 +426,13 @@ impl RiskEngine {
     }
 
     /// Apply risk checks with current market price for MTM calculations
-    pub fn apply_with_price(&mut self, state: &StrategyState, action: Action, now_ts: u64, current_price: f64) -> Action {
+    pub fn apply_with_price(
+        &mut self,
+        state: &StrategyState,
+        action: Action,
+        now_ts: u64,
+        current_price: f64,
+    ) -> Action {
         if state.trading_halted {
             return match action {
                 Action::Close => Action::Close,
@@ -422,8 +481,12 @@ impl RiskEngine {
             // Over-exposed: only allow risk-reducing actions
             match action {
                 Action::Close => return action,
-                Action::Sell { qty } if state.portfolio.position > 0.0 => return Action::Sell { qty },
-                Action::Buy { qty } if state.portfolio.position < 0.0 => return Action::Buy { qty },
+                Action::Sell { qty } if state.portfolio.position > 0.0 => {
+                    return Action::Sell { qty }
+                }
+                Action::Buy { qty } if state.portfolio.position < 0.0 => {
+                    return Action::Buy { qty }
+                }
                 _ => return Action::Hold,
             }
         }

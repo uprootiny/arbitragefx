@@ -14,7 +14,11 @@ pub struct CircuitBreaker {
 
 impl CircuitBreaker {
     pub fn new(threshold: u32) -> Self {
-        Self { state: CircuitState::Closed, failures: 0, threshold }
+        Self {
+            state: CircuitState::Closed,
+            failures: 0,
+            threshold,
+        }
     }
 
     pub fn record_success(&mut self) {

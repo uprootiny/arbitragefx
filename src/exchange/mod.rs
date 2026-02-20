@@ -1,14 +1,14 @@
 use anyhow::Result;
-use serde::Deserialize;
 use async_trait::async_trait;
+use serde::Deserialize;
 
 use crate::state::{Config, Fill};
 use crate::strategy::{Action, MarketAux};
 
 mod binance;
 mod kraken;
-pub mod signing;
 pub mod retry;
+pub mod signing;
 
 #[derive(Clone, Copy, Debug)]
 pub enum ExchangeKind {
@@ -18,7 +18,10 @@ pub enum ExchangeKind {
 
 impl ExchangeKind {
     pub fn from_env() -> Self {
-        match std::env::var("EXCHANGE").unwrap_or_else(|_| "binance".to_string()).as_str() {
+        match std::env::var("EXCHANGE")
+            .unwrap_or_else(|_| "binance".to_string())
+            .as_str()
+        {
             "kraken" => ExchangeKind::Kraken,
             _ => ExchangeKind::Binance,
         }
@@ -46,5 +49,10 @@ pub struct Candle {
 pub trait Exchange {
     async fn fetch_latest_candle(&self, symbol: &str, granularity: u64) -> Result<Candle>;
     async fn fetch_aux(&self, symbol: &str) -> Result<MarketAux>;
-    async fn execute(&self, symbol: &str, action: Action, state: &crate::strategy::StrategyState) -> Result<Fill>;
+    async fn execute(
+        &self,
+        symbol: &str,
+        action: Action,
+        state: &crate::strategy::StrategyState,
+    ) -> Result<Fill>;
 }

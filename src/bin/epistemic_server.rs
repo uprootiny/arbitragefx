@@ -12,8 +12,7 @@ fn main() {
         .ok()
         .and_then(|v| v.parse().ok())
         .unwrap_or(8765);
-    let listener = TcpListener::bind(format!("0.0.0.0:{}", port))
-        .expect("Failed to bind");
+    let listener = TcpListener::bind(format!("0.0.0.0:{}", port)).expect("Failed to bind");
 
     println!("Epistemic Server running at http://localhost:{}", port);
     println!();
@@ -40,7 +39,11 @@ fn main() {
             let state = EpistemicState::from_system();
             ("200 OK", "application/json", state.to_json())
         } else if request.starts_with("GET /api/health") {
-            ("200 OK", "application/json", r#"{"status":"ok"}"#.to_string())
+            (
+                "200 OK",
+                "application/json",
+                r#"{"status":"ok"}"#.to_string(),
+            )
         } else if request.starts_with("GET /api/summary") {
             let state = EpistemicState::from_system();
             let counts = state.count_by_level();

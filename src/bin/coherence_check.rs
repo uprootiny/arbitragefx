@@ -64,13 +64,17 @@ fn main() {
                             errors.push(format!("hypothesis {} missing rationale", entry.id));
                         }
                         if entry.testable_prediction.trim().is_empty() {
-                            errors.push(format!("hypothesis {} missing testable_prediction", entry.id));
+                            errors.push(format!(
+                                "hypothesis {} missing testable_prediction",
+                                entry.id
+                            ));
                         }
                         if entry.status.trim().is_empty() {
                             errors.push(format!("hypothesis {} missing status", entry.id));
                         }
                         if entry.success_criteria.is_null() {
-                            errors.push(format!("hypothesis {} missing success_criteria", entry.id));
+                            errors
+                                .push(format!("hypothesis {} missing success_criteria", entry.id));
                         }
                     }
                 }
@@ -96,10 +100,7 @@ fn main() {
                 }
                 let manifest_path = manifest_path_for(&path);
                 if !manifest_path.exists() {
-                    errors.push(format!(
-                        "missing manifest for {}",
-                        path.display()
-                    ));
+                    errors.push(format!("missing manifest for {}", path.display()));
                     continue;
                 }
                 match fs::read_to_string(&manifest_path) {
@@ -108,10 +109,8 @@ fn main() {
                             match file_sha256(&path) {
                                 Ok(hash) => {
                                     if hash != payload.manifest.hash_sha256 {
-                                        errors.push(format!(
-                                            "hash mismatch for {}",
-                                            path.display()
-                                        ));
+                                        errors
+                                            .push(format!("hash mismatch for {}", path.display()));
                                     }
                                 }
                                 Err(err) => errors.push(format!(
@@ -120,10 +119,8 @@ fn main() {
                                     err
                                 )),
                             }
-                            let expected: Vec<String> = EXPECTED_COLUMNS
-                                .iter()
-                                .map(|s| s.to_string())
-                                .collect();
+                            let expected: Vec<String> =
+                                EXPECTED_COLUMNS.iter().map(|s| s.to_string()).collect();
                             if payload.manifest.columns != expected {
                                 errors.push(format!(
                                     "schema mismatch in manifest for {}",
