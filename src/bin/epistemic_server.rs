@@ -29,12 +29,39 @@ fn main() {
     let port: u16 = std::env::var("PORT")
         .ok()
         .and_then(|v| v.parse().ok())
-        .unwrap_or(8765);
+        .unwrap_or(51723);
     let listener = TcpListener::bind(format!("0.0.0.0:{}", port)).expect("Failed to bind");
 
     // Pre-compute expensive values at startup
     let cached_test_count = count_tests_fast();
     println!("  Cached test count: {}", cached_test_count);
+
+    // Pre-compute trap status
+    let traps = arbitragefx::backtest_traps::trap_status();
+    let cached_traps_json = serde_json::json!(traps
+        .iter()
+        .map(|t| serde_json::json!({
+            "id": t.id,
+            "name": t.name,
+            "severity": format!("{:?}", t.severity),
+            "guard": format!("{:?}", t.guard),
+            "evidence": t.evidence,
+        }))
+        .collect::<Vec<_>>())
+    .to_string();
+    println!("  Cached trap status: {} traps", traps.len());
+
+    // Pre-load STV history
+    let cached_timeline_json = std::fs::read_to_string("out/ledger_history/updates.jsonl")
+        .map(|content| {
+            let entries: Vec<serde_json::Value> = content
+                .lines()
+                .filter_map(|l| serde_json::from_str(l).ok())
+                .collect();
+            serde_json::to_string(&entries).unwrap_or_else(|_| "[]".into())
+        })
+        .unwrap_or_else(|_| "[]".into());
+    println!("  Cached timeline entries");
 
     // Pre-load workbench HTML for serving
     let workbench_html = std::fs::read_to_string("docs/workbench.html")
@@ -43,13 +70,16 @@ fn main() {
             "<html><body><h1>Workbench not generated</h1><p>Run: cargo run --release --bin workbench</p></body></html>".into()
         });
 
+    println!();
     println!("Epistemic Server running at http://localhost:{}", port);
     println!();
     println!("Endpoints:");
-    println!("  GET /              - Workbench dashboard");
-    println!("  GET /api/state     - Full epistemic state as JSON");
-    println!("  GET /api/health    - Health check");
-    println!("  GET /api/summary   - Compact status summary");
+    println!("  GET /               - Workbench dashboard");
+    println!("  GET /api/state      - Full epistemic state");
+    println!("  GET /api/health     - Enriched health check");
+    println!("  GET /api/summary    - Compact status");
+    println!("  GET /api/traps      - 18-point trap checklist");
+    println!("  GET /api/timeline   - STV evidence history");
     println!();
 
     for stream in listener.incoming() {
@@ -132,6 +162,10 @@ fn main() {
                 "hypotheses": state.hypotheses.len(),
             });
             ("200 OK", "application/json", health.to_string())
+        } else if request.starts_with("GET /api/traps") {
+            ("200 OK", "application/json", cached_traps_json.clone())
+        } else if request.starts_with("GET /api/timeline") {
+            ("200 OK", "application/json", cached_timeline_json.clone())
         } else if request.starts_with("GET /api/summary") {
             let state = EpistemicState::from_system();
             let counts = state.count_by_level();

@@ -431,7 +431,13 @@ fn main() {
     };
 
     let json_blob = serde_json::to_string(&data).unwrap();
-    let html = TEMPLATE.replace("__WORKBENCH_DATA__", &json_blob);
+    // Escape for safe embedding inside a JS single-quoted string:
+    // backslashes first, then single quotes, then </script> sequences.
+    let escaped = json_blob
+        .replace('\\', "\\\\")
+        .replace('\'', "\\'")
+        .replace("</script>", "<\\/script>");
+    let html = TEMPLATE.replace("__WORKBENCH_DATA__", &escaped);
 
     // Write outputs
     fs::create_dir_all("docs").ok();
