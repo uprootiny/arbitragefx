@@ -455,595 +455,806 @@ const TEMPLATE: &str = r##"<!DOCTYPE html>
   <title>ArbitrageFX Workbench</title>
   <style>
     :root {
-      --bg: #0d1117;
-      --fg: #c9d1d9;
-      --accent: #58a6ff;
-      --border: #30363d;
-      --card-bg: #161b22;
-      --green: #3fb950;
-      --red: #f85149;
-      --yellow: #d29922;
-      --mono: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace;
+      --bg: #0d1117; --bg-raised: #161b22; --bg-inset: #010409;
+      --fg: #c9d1d9; --fg-muted: #8b949e; --fg-subtle: #484f58; --fg-bright: #f0f6fc;
+      --accent: #58a6ff; --accent-muted: #1a3050;
+      --green: #3fb950; --green-muted: #0d2818; --green-border: #1a4128;
+      --red: #f85149; --red-muted: #2d0000; --red-border: #4d0000;
+      --yellow: #d29922; --yellow-muted: #2d1f00; --yellow-border: #4d3800;
+      --border: #30363d; --border-heavy: #484f58;
+      --mono: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', 'SF Mono', monospace;
+      --sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
+      --radius: 8px; --radius-sm: 4px;
+      --shadow: 0 1px 3px rgba(0,0,0,0.3), 0 1px 2px rgba(0,0,0,0.2);
+      --shadow-lg: 0 4px 12px rgba(0,0,0,0.4);
+      --transition: 0.2s ease;
+      --nav-h: 48px;
     }
-    * { box-sizing: border-box; margin: 0; padding: 0; }
-    body {
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
-      background: var(--bg);
-      color: var(--fg);
-      line-height: 1.6;
-      padding: 2rem;
-      max-width: 1200px;
-      margin: 0 auto;
-    }
-    h1 { color: #f0f6fc; font-size: 2rem; margin-bottom: 0.3rem; }
-    h2 {
-      color: var(--accent);
-      font-size: 1.2rem;
-      margin: 2rem 0 0.8rem;
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html { scroll-behavior: smooth; scroll-padding-top: calc(var(--nav-h) + 16px); }
+    body { font-family: var(--sans); background: var(--bg); color: var(--fg); line-height: 1.6; }
+
+    /* ── Navigation ── */
+    nav {
+      position: sticky; top: 0; z-index: 100;
+      background: rgba(13,17,23,0.92); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
       border-bottom: 1px solid var(--border);
-      padding-bottom: 0.3rem;
+      height: var(--nav-h); display: flex; align-items: center;
+      padding: 0 1.5rem; gap: 0.25rem;
     }
-    .subtitle { color: #8b949e; font-size: 0.85rem; margin-bottom: 1.5rem; }
-    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 0.8rem; margin: 0.8rem 0; }
+    .nav-brand { color: var(--fg-bright); font-weight: 700; font-size: 0.9rem; margin-right: 1rem; white-space: nowrap; }
+    .nav-links { display: flex; gap: 0.15rem; overflow-x: auto; flex: 1; scrollbar-width: none; }
+    .nav-links::-webkit-scrollbar { display: none; }
+    .nav-link {
+      color: var(--fg-muted); text-decoration: none; font-size: 0.72rem; padding: 0.3rem 0.55rem;
+      border-radius: var(--radius-sm); white-space: nowrap; transition: all var(--transition);
+    }
+    .nav-link:hover { color: var(--fg-bright); background: rgba(255,255,255,0.05); }
+    .nav-link.active { color: var(--accent); background: var(--accent-muted); }
+    .nav-status { margin-left: auto; display: flex; gap: 0.6rem; align-items: center; font-size: 0.7rem; font-family: var(--mono); color: var(--fg-muted); }
+    .status-dot { width: 7px; height: 7px; border-radius: 50%; display: inline-block; }
+    .status-dot.ok { background: var(--green); box-shadow: 0 0 6px var(--green); }
+
+    /* ── Main Layout ── */
+    main { max-width: 1280px; margin: 0 auto; padding: 1.5rem; }
+    .section { margin-bottom: 2.5rem; scroll-margin-top: calc(var(--nav-h) + 16px); }
+    .section-header {
+      display: flex; align-items: baseline; gap: 0.75rem;
+      border-bottom: 1px solid var(--border); padding-bottom: 0.5rem; margin-bottom: 1rem;
+      cursor: pointer; user-select: none;
+    }
+    .section-header h2 {
+      color: var(--fg-bright); font-size: 1.05rem; font-weight: 600; letter-spacing: -0.01em;
+    }
+    .section-desc { color: var(--fg-muted); font-size: 0.75rem; flex: 1; }
+    .section-toggle { color: var(--fg-subtle); font-size: 0.8rem; transition: transform var(--transition); }
+    .section.collapsed .section-toggle { transform: rotate(-90deg); }
+    .section.collapsed .section-body { display: none; }
+
+    /* ── Hero ── */
+    .hero { margin-bottom: 2rem; }
+    .hero h1 { color: var(--fg-bright); font-size: 1.5rem; font-weight: 700; letter-spacing: -0.02em; margin-bottom: 0.2rem; }
+    .hero-sub { color: var(--fg-muted); font-size: 0.8rem; font-family: var(--mono); }
+    .hero-findings {
+      display: flex; gap: 0.75rem; margin-top: 1rem; flex-wrap: wrap;
+    }
+    .finding {
+      background: var(--bg-raised); border: 1px solid var(--border); border-radius: var(--radius);
+      padding: 0.6rem 0.9rem; font-size: 0.78rem; display: flex; align-items: center; gap: 0.5rem;
+    }
+    .finding-icon { font-size: 0.9rem; }
+    .finding b { color: var(--fg-bright); }
+
+    /* ── Cards Grid ── */
+    .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 0.65rem; }
     .card {
-      background: var(--card-bg);
-      border: 1px solid var(--border);
-      border-radius: 6px;
-      padding: 0.8rem 1rem;
+      background: var(--bg-raised); border: 1px solid var(--border); border-radius: var(--radius);
+      padding: 0.75rem 0.9rem; transition: border-color var(--transition), box-shadow var(--transition);
+      border-top: 3px solid var(--border);
     }
-    .card h3 { font-size: 0.85rem; color: #8b949e; margin-bottom: 0.3rem; font-weight: 400; }
-    .card .val { font-size: 1.6rem; font-weight: 700; color: #f0f6fc; font-family: var(--mono); }
-    .card .detail { font-size: 0.75rem; color: #8b949e; margin-top: 0.2rem; }
-    table { width: 100%; border-collapse: collapse; margin: 0.5rem 0; font-size: 0.8rem; }
-    th, td { padding: 0.4rem 0.6rem; text-align: left; border-bottom: 1px solid var(--border); }
-    th { color: #f0f6fc; font-weight: 600; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.5px; }
-    .mono { font-family: var(--mono); font-size: 0.8rem; }
+    .card:hover { border-color: var(--border-heavy); box-shadow: var(--shadow); }
+    .card.accent-green { border-top-color: var(--green); }
+    .card.accent-blue { border-top-color: var(--accent); }
+    .card.accent-yellow { border-top-color: var(--yellow); }
+    .card.accent-red { border-top-color: var(--red); }
+    .card-label { font-size: 0.72rem; color: var(--fg-muted); text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 0.15rem; }
+    .card-val { font-size: 1.5rem; font-weight: 700; color: var(--fg-bright); font-family: var(--mono); line-height: 1.2; }
+    .card-detail { font-size: 0.7rem; color: var(--fg-subtle); margin-top: 0.15rem; }
+
+    /* ── Tables ── */
+    .table-wrap { overflow-x: auto; margin: 0.5rem 0; border-radius: var(--radius); border: 1px solid var(--border); }
+    table { width: 100%; border-collapse: collapse; font-size: 0.78rem; }
+    thead { background: var(--bg-raised); }
+    th {
+      padding: 0.5rem 0.7rem; text-align: left; font-weight: 600; font-size: 0.68rem;
+      text-transform: uppercase; letter-spacing: 0.04em; color: var(--fg-muted);
+      border-bottom: 1px solid var(--border); position: sticky; top: 0; background: var(--bg-raised);
+    }
+    td { padding: 0.45rem 0.7rem; border-bottom: 1px solid rgba(48,54,61,0.5); }
+    tbody tr { transition: background var(--transition); }
+    tbody tr:hover { background: rgba(255,255,255,0.02); }
+    tbody tr:last-child td { border-bottom: none; }
+    .mono { font-family: var(--mono); font-size: 0.78rem; }
+    .text-right { text-align: right; }
+    .text-center { text-align: center; }
+
+    /* ── Badges ── */
     .badge {
-      display: inline-block;
-      padding: 0.1rem 0.4rem;
-      border-radius: 3px;
-      font-size: 0.7rem;
-      font-family: var(--mono);
+      display: inline-flex; align-items: center; gap: 0.25rem;
+      padding: 0.12rem 0.45rem; border-radius: var(--radius-sm);
+      font-size: 0.65rem; font-family: var(--mono); font-weight: 500; white-space: nowrap;
     }
-    .badge-green { background: #0d2818; color: var(--green); border: 1px solid #1a4128; }
-    .badge-yellow { background: #2d1f00; color: var(--yellow); border: 1px solid #4d3800; }
-    .badge-red { background: #2d0000; color: var(--red); border: 1px solid #4d0000; }
-    .badge-blue { background: #0d1a2d; color: var(--accent); border: 1px solid #1a3050; }
+    .badge-green { background: var(--green-muted); color: var(--green); border: 1px solid var(--green-border); }
+    .badge-yellow { background: var(--yellow-muted); color: var(--yellow); border: 1px solid var(--yellow-border); }
+    .badge-red { background: var(--red-muted); color: var(--red); border: 1px solid var(--red-border); }
+    .badge-blue { background: var(--accent-muted); color: var(--accent); border: 1px solid #1a3050; }
+    .badge-gray { background: rgba(139,148,158,0.1); color: var(--fg-muted); border: 1px solid var(--border); }
 
-    /* Heatmap */
-    .heatmap { display: grid; gap: 2px; margin: 0.5rem 0; }
-    .heatmap-cell {
-      padding: 0.3rem;
-      text-align: center;
-      font-family: var(--mono);
-      font-size: 0.65rem;
-      border-radius: 3px;
-      min-width: 60px;
+    /* ── Bars ── */
+    .bar-row { display: flex; align-items: center; gap: 0.6rem; padding: 0.25rem 0; }
+    .bar-label { min-width: 110px; font-size: 0.72rem; text-align: right; color: var(--fg-muted); font-family: var(--mono); }
+    .bar-track { flex: 1; height: 20px; background: var(--bg-inset); border-radius: var(--radius-sm); overflow: hidden; display: flex; }
+    .bar-seg { height: 100%; transition: width 0.4s ease; }
+    .bar-val { font-family: var(--mono); font-size: 0.7rem; min-width: 55px; color: var(--fg-muted); }
+
+    /* ── Heatmap ── */
+    .heatmap { display: grid; gap: 2px; }
+    .hm-cell {
+      padding: 0.35rem 0.2rem; text-align: center; font-family: var(--mono); font-size: 0.68rem;
+      border-radius: var(--radius-sm); transition: transform 0.15s, box-shadow 0.15s; cursor: default;
     }
-    .heatmap-header {
-      font-weight: 600;
-      color: #8b949e;
-      font-size: 0.65rem;
-      text-align: center;
-      padding: 0.3rem;
-    }
+    .hm-cell:hover { transform: scale(1.08); box-shadow: var(--shadow); z-index: 1; position: relative; }
+    .hm-head { font-weight: 600; color: var(--fg-muted); font-size: 0.65rem; text-align: center; padding: 0.35rem 0.2rem; }
 
-    /* Bars */
-    .bar-container { display: flex; align-items: center; gap: 0.5rem; margin: 0.2rem 0; }
-    .bar-label { min-width: 120px; font-size: 0.75rem; text-align: right; color: #8b949e; }
-    .bar-track { flex: 1; height: 18px; background: #21262d; border-radius: 3px; overflow: hidden; position: relative; }
-    .bar-fill { height: 100%; border-radius: 3px; transition: width 0.3s; }
-    .bar-value { font-family: var(--mono); font-size: 0.7rem; min-width: 60px; }
-
-    .section { margin-bottom: 1.5rem; }
-    .empty-state { color: #484f58; font-style: italic; font-size: 0.85rem; padding: 1rem; }
-    footer { margin-top: 3rem; color: #484f58; font-size: 0.75rem; border-top: 1px solid var(--border); padding-top: 1rem; }
-
-    /* Kanban board for uncertainty map */
-    .kanban { display: flex; gap: 0.6rem; margin: 0.5rem 0; overflow-x: auto; }
+    /* ── Kanban ── */
+    .kanban { display: grid; grid-template-columns: repeat(auto-fill, minmax(175px, 1fr)); gap: 0.6rem; }
     .kanban-col {
-      flex: 1; min-width: 160px; background: var(--card-bg); border: 1px solid var(--border);
-      border-radius: 6px; padding: 0.6rem;
+      background: var(--bg-raised); border: 1px solid var(--border); border-radius: var(--radius);
+      padding: 0.7rem; border-top: 3px solid var(--border);
     }
-    .kanban-col h4 {
-      font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.5px;
-      margin-bottom: 0.5rem; padding-bottom: 0.3rem; border-bottom: 2px solid var(--border);
-    }
+    .kanban-title { font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 0.5rem; display: flex; justify-content: space-between; }
+    .kanban-count { background: rgba(255,255,255,0.06); border-radius: 10px; padding: 0 0.4rem; font-size: 0.62rem; }
     .kanban-item {
-      background: var(--bg); border: 1px solid var(--border); border-radius: 4px;
-      padding: 0.4rem 0.6rem; margin-bottom: 0.3rem; font-size: 0.75rem; font-family: var(--mono);
+      background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius-sm);
+      padding: 0.35rem 0.55rem; margin-bottom: 0.3rem; font-size: 0.72rem; font-family: var(--mono);
+      transition: border-color var(--transition);
     }
-    .kanban-empty { color: #484f58; font-style: italic; font-size: 0.7rem; }
+    .kanban-item:hover { border-color: var(--border-heavy); }
+    .kanban-empty { color: var(--fg-subtle); font-style: italic; font-size: 0.68rem; padding: 0.3rem 0; }
 
-    /* Sparkline */
-    .sparkline-container { display: inline-block; vertical-align: middle; margin-left: 0.5rem; }
-    .sparkline-svg { vertical-align: middle; }
+    /* ── Sparklines ── */
+    .spark-wrap { display: inline-flex; align-items: center; gap: 0.4rem; }
+    .spark-svg { vertical-align: middle; }
+    .spark-val { font-family: var(--mono); font-size: 0.72rem; }
 
-    /* Trap checklist */
-    .trap-guard { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 0.4rem; vertical-align: middle; }
-    .trap-guard-Guarded { background: var(--green); }
-    .trap-guard-Partial { background: var(--yellow); }
-    .trap-guard-Unguarded { background: var(--red); }
+    /* ── Trap Indicators ── */
+    .trap-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; vertical-align: middle; }
+    .trap-dot.guarded { background: var(--green); box-shadow: 0 0 4px rgba(63,185,80,0.4); }
+    .trap-dot.partial { background: var(--yellow); box-shadow: 0 0 4px rgba(210,153,34,0.4); }
+    .trap-dot.unguarded { background: var(--red); box-shadow: 0 0 4px rgba(248,81,73,0.4); }
 
-    /* Trend chart */
-    .trend-svg { margin: 0.5rem 0; }
+    /* ── Integrity Ring ── */
+    .integrity-ring { display: flex; align-items: center; gap: 0.3rem; }
+    .ring-svg { transform: rotate(-90deg); }
 
-    /* Leaderboard */
-    .leaderboard { display: flex; gap: 0.6rem; margin: 0.5rem 0; flex-wrap: wrap; }
-    .leaderboard-col { flex: 1; min-width: 140px; }
-    .leaderboard-col h4 { font-size: 0.7rem; color: #8b949e; text-transform: uppercase; margin-bottom: 0.3rem; }
-    .rank-item { font-size: 0.7rem; font-family: var(--mono); padding: 0.15rem 0; display: flex; justify-content: space-between; }
-    .rank-pos { color: #8b949e; min-width: 1.2rem; }
+    /* ── Leaderboard ── */
+    .lb-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 0.6rem; }
+    .lb-col { background: var(--bg-raised); border: 1px solid var(--border); border-radius: var(--radius); padding: 0.7rem; }
+    .lb-title { font-size: 0.7rem; color: var(--fg-muted); text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 0.5rem; font-weight: 600; }
+    .lb-row { display: flex; justify-content: space-between; align-items: center; padding: 0.2rem 0; font-size: 0.72rem; font-family: var(--mono); }
+    .lb-rank { color: var(--fg-subtle); min-width: 1.5rem; }
+
+    /* ── Trends Chart ── */
+    .chart-container { background: var(--bg-raised); border: 1px solid var(--border); border-radius: var(--radius); padding: 0.75rem; }
+    .chart-legend { display: flex; gap: 1rem; font-size: 0.68rem; color: var(--fg-muted); margin-top: 0.4rem; }
+    .chart-legend span { display: flex; align-items: center; gap: 0.3rem; }
+    .legend-line { width: 16px; height: 2px; display: inline-block; }
+
+    /* ── Empty State ── */
+    .empty { color: var(--fg-subtle); font-style: italic; font-size: 0.8rem; padding: 1.5rem; text-align: center; background: var(--bg-raised); border: 1px dashed var(--border); border-radius: var(--radius); }
+    .empty code { font-family: var(--mono); font-size: 0.75rem; color: var(--fg-muted); background: rgba(255,255,255,0.04); padding: 0.15rem 0.4rem; border-radius: var(--radius-sm); }
+
+    /* ── Tooltip ── */
+    .tip { position: relative; }
+    .tip::after {
+      content: attr(data-tip); position: absolute; bottom: 100%; left: 50%; transform: translateX(-50%);
+      background: var(--fg-bright); color: var(--bg); padding: 0.3rem 0.55rem; border-radius: var(--radius-sm);
+      font-size: 0.68rem; font-family: var(--mono); white-space: nowrap; pointer-events: none;
+      opacity: 0; transition: opacity 0.15s; z-index: 10;
+    }
+    .tip:hover::after { opacity: 1; }
+
+    /* ── Footer ── */
+    footer {
+      margin-top: 2rem; padding: 1rem 0; border-top: 1px solid var(--border);
+      display: flex; justify-content: space-between; flex-wrap: wrap; gap: 0.5rem;
+      font-size: 0.7rem; color: var(--fg-subtle);
+    }
+    footer a { color: var(--fg-muted); text-decoration: none; }
+    footer a:hover { color: var(--accent); }
+
+    /* ── Responsive ── */
+    @media (max-width: 768px) {
+      main { padding: 1rem; }
+      .grid { grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); }
+      .card-val { font-size: 1.2rem; }
+      .kanban { grid-template-columns: 1fr 1fr; }
+      .lb-grid { grid-template-columns: 1fr; }
+      .hero-findings { flex-direction: column; }
+      .nav-status { display: none; }
+      nav { padding: 0 0.75rem; }
+    }
+    @media (max-width: 480px) {
+      .grid { grid-template-columns: 1fr 1fr; }
+      .kanban { grid-template-columns: 1fr; }
+    }
+
+    /* ── Print ── */
+    @media print {
+      nav { display: none; }
+      body { background: #fff; color: #111; }
+      .card { border: 1px solid #ccc; break-inside: avoid; }
+      .section { break-inside: avoid; }
+    }
+
+    /* ── Keyboard hint ── */
+    .kbd-hint {
+      position: fixed; bottom: 1rem; right: 1rem; background: var(--bg-raised); border: 1px solid var(--border);
+      border-radius: var(--radius); padding: 0.4rem 0.6rem; font-size: 0.65rem; color: var(--fg-subtle);
+      opacity: 0; transition: opacity 0.3s; pointer-events: none;
+    }
+    .kbd-hint.show { opacity: 1; }
+    .kbd { background: rgba(255,255,255,0.06); border: 1px solid var(--border); border-radius: 3px; padding: 0.05rem 0.3rem; font-family: var(--mono); }
   </style>
 </head>
 <body>
-  <h1>ArbitrageFX Workbench</h1>
-  <p class="subtitle" id="subtitle">Loading...</p>
+  <nav>
+    <span class="nav-brand">ArbitrageFX</span>
+    <div class="nav-links" id="nav-links"></div>
+    <div class="nav-status" id="nav-status"></div>
+  </nav>
 
-  <!-- Overview Cards -->
-  <div class="grid" id="overview"></div>
+  <main>
+    <div class="hero" id="hero"></div>
 
-  <!-- Profiling -->
-  <div class="section">
-    <h2>Profiling</h2>
-    <div id="profiling"><p class="empty-state">No bench data. Run: cargo run --release --bin bench</p></div>
+    <div class="section" id="sec-overview" data-nav="Overview">
+      <div class="section-header" onclick="toggleSection(this)">
+        <h2>System Overview</h2>
+        <span class="section-desc">Key metrics at a glance</span>
+        <span class="section-toggle">&#9662;</span>
+      </div>
+      <div class="section-body"><div class="grid" id="overview"></div></div>
+    </div>
+
+    <div class="section" id="sec-profiling" data-nav="Profiling">
+      <div class="section-header" onclick="toggleSection(this)">
+        <h2>Profiling</h2>
+        <span class="section-desc">Execution timing and resource usage per dataset</span>
+        <span class="section-toggle">&#9662;</span>
+      </div>
+      <div class="section-body" id="profiling"><p class="empty">No bench data. Run <code>cargo run --release --bin bench</code></p></div>
+    </div>
+
+    <div class="section" id="sec-heatmap" data-nav="Heatmap">
+      <div class="section-header" onclick="toggleSection(this)">
+        <h2>Strategy &times; Regime Heatmap</h2>
+        <span class="section-desc">Equity PnL across strategy variants and market regimes</span>
+        <span class="section-toggle">&#9662;</span>
+      </div>
+      <div class="section-body" id="heatmap"><p class="empty">No bench data available</p></div>
+    </div>
+
+    <div class="section" id="sec-walkforward" data-nav="Walk-Forward">
+      <div class="section-header" onclick="toggleSection(this)">
+        <h2>Walk-Forward Survival</h2>
+        <span class="section-desc">Out-of-sample validation with Bonferroni correction</span>
+        <span class="section-toggle">&#9662;</span>
+      </div>
+      <div class="section-body" id="walkforward"><p class="empty">No walk-forward data. Run <code>cargo run --release --bin walk_forward</code></p></div>
+    </div>
+
+    <div class="section" id="sec-hypotheses" data-nav="Hypotheses">
+      <div class="section-header" onclick="toggleSection(this)">
+        <h2>Hypothesis Ledger</h2>
+        <span class="section-desc">Bayesian truth values tracking what the system believes</span>
+        <span class="section-toggle">&#9662;</span>
+      </div>
+      <div class="section-body" id="hypotheses"><p class="empty">No hypotheses found</p></div>
+    </div>
+
+    <div class="section" id="sec-timeline" data-nav="Timeline">
+      <div class="section-header" onclick="toggleSection(this)">
+        <h2>Evidence Timeline</h2>
+        <span class="section-desc">How truth values evolved over successive observations</span>
+        <span class="section-toggle">&#9662;</span>
+      </div>
+      <div class="section-body" id="timeline"><p class="empty">No evidence history. Run <code>cargo run --bin update_ledger</code></p></div>
+    </div>
+
+    <div class="section" id="sec-uncertainty" data-nav="Uncertainty">
+      <div class="section-header" onclick="toggleSection(this)">
+        <h2>Uncertainty Map</h2>
+        <span class="section-desc">Knowledge classification from established to untested</span>
+        <span class="section-toggle">&#9662;</span>
+      </div>
+      <div class="section-body" id="uncertainty"><p class="empty">No uncertainty map data</p></div>
+    </div>
+
+    <div class="section" id="sec-traps" data-nav="Traps">
+      <div class="section-header" onclick="toggleSection(this)">
+        <h2>Backtest Trap Checklist</h2>
+        <span class="section-desc">18-point integrity surface from the backtesting literature</span>
+        <span class="section-toggle">&#9662;</span>
+      </div>
+      <div class="section-body" id="traps"><p class="empty">No trap status data</p></div>
+    </div>
+
+    <div class="section" id="sec-leaderboard" data-nav="Leaderboard">
+      <div class="section-header" onclick="toggleSection(this)">
+        <h2>Regime Leaderboard</h2>
+        <span class="section-desc">Strategies ranked by equity PnL per market regime</span>
+        <span class="section-toggle">&#9662;</span>
+      </div>
+      <div class="section-body" id="leaderboard"><p class="empty">No bench data for leaderboard</p></div>
+    </div>
+
+    <div class="section" id="sec-trends" data-nav="Trends">
+      <div class="section-header" onclick="toggleSection(this)">
+        <h2>Resource Trends</h2>
+        <span class="section-desc">Throughput and timing across bench runs</span>
+        <span class="section-toggle">&#9662;</span>
+      </div>
+      <div class="section-body" id="trends"><p class="empty">No bench history for trends</p></div>
+    </div>
+
+    <div class="section" id="sec-history" data-nav="History">
+      <div class="section-header" onclick="toggleSection(this)">
+        <h2>Run History</h2>
+        <span class="section-desc">Past pipeline and bench executions</span>
+        <span class="section-toggle">&#9662;</span>
+      </div>
+      <div class="section-body" id="history"><p class="empty">No run history</p></div>
+    </div>
+  </main>
+
+  <footer>
+    <span id="footer-left"></span>
+    <span><a href="https://github.com/uprootiny/arbitragefx">GitHub</a></span>
+  </footer>
+
+  <div class="kbd-hint" id="kbd-hint">
+    <span class="kbd">j</span>/<span class="kbd">k</span> navigate &nbsp;
+    <span class="kbd">c</span> collapse
   </div>
-
-  <!-- Strategy x Regime Heatmap -->
-  <div class="section">
-    <h2>Strategy &times; Regime Heatmap</h2>
-    <div id="heatmap"><p class="empty-state">No bench data available</p></div>
-  </div>
-
-  <!-- Walk-Forward Survival -->
-  <div class="section">
-    <h2>Walk-Forward Survival</h2>
-    <div id="walkforward"><p class="empty-state">No walk-forward data. Run: cargo run --release --bin walk_forward</p></div>
-  </div>
-
-  <!-- Hypotheses -->
-  <div class="section">
-    <h2>Hypothesis Ledger</h2>
-    <div id="hypotheses"><p class="empty-state">No hypotheses found</p></div>
-  </div>
-
-  <!-- Evidence Timeline -->
-  <div class="section">
-    <h2>Evidence Timeline</h2>
-    <div id="timeline"><p class="empty-state">No evidence history. Run: cargo run --bin update_ledger</p></div>
-  </div>
-
-  <!-- Uncertainty Map -->
-  <div class="section">
-    <h2>Uncertainty Map</h2>
-    <div id="uncertainty"><p class="empty-state">No uncertainty map data</p></div>
-  </div>
-
-  <!-- Trap Checklist -->
-  <div class="section">
-    <h2>Backtest Trap Checklist</h2>
-    <div id="traps"><p class="empty-state">No trap status data</p></div>
-  </div>
-
-  <!-- Regime Leaderboard -->
-  <div class="section">
-    <h2>Regime Leaderboard</h2>
-    <div id="leaderboard"><p class="empty-state">No bench data for leaderboard</p></div>
-  </div>
-
-  <!-- Resource Trends -->
-  <div class="section">
-    <h2>Resource Trends</h2>
-    <div id="trends"><p class="empty-state">No bench history for trends</p></div>
-  </div>
-
-  <!-- Run History -->
-  <div class="section">
-    <h2>History</h2>
-    <div id="history"><p class="empty-state">No run history</p></div>
-  </div>
-
-  <footer id="footer"></footer>
 
   <script>
   const D = JSON.parse('__WORKBENCH_DATA__');
+  const sections = [...document.querySelectorAll('.section[data-nav]')];
+  let activeSec = 0;
 
-  // Subtitle
-  document.getElementById('subtitle').textContent =
-    `Generated ${D.generated.split('T')[0]} · git ${D.git_sha} · ${D.test_count} tests · ${D.dataset_count} datasets`;
+  // ── Helpers ──
+  function toggleSection(header) {
+    header.closest('.section').classList.toggle('collapsed');
+  }
+  function fmt(n, d=0) { return n.toLocaleString(undefined, {minimumFractionDigits:d, maximumFractionDigits:d}); }
+  function pnlColor(v) { return v >= 0 ? 'var(--green)' : 'var(--red)'; }
+  function pnlSign(v, d=2) { return (v >= 0 ? '+' : '') + v.toFixed(d); }
+  function sparkSvg(vals, color, w=140, h=28) {
+    if (!vals.length) return '';
+    const pad = 2;
+    if (vals.length === 1) {
+      const y = h - pad - vals[0] * (h - 2*pad);
+      return `<svg class="spark-svg" width="${w}" height="${h}"><circle cx="${w/2}" cy="${y}" r="2.5" fill="${color}"/></svg>`;
+    }
+    const mn = Math.min(...vals), mx = Math.max(...vals);
+    const range = mx - mn || 1;
+    const pts = vals.map((v, i) => {
+      const x = pad + (i / (vals.length - 1)) * (w - 2*pad);
+      const y = h - pad - ((v - mn) / range) * (h - 2*pad);
+      return `${x.toFixed(1)},${y.toFixed(1)}`;
+    }).join(' ');
+    // gradient fill
+    const last = vals[vals.length - 1], first = vals[0];
+    const trend = last >= first ? color : 'var(--red)';
+    return `<svg class="spark-svg" width="${w}" height="${h}">
+      <defs><linearGradient id="sg_${color.replace(/[^a-z0-9]/g,'')}" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0%" stop-color="${trend}" stop-opacity="0.2"/><stop offset="100%" stop-color="${trend}" stop-opacity="0"/>
+      </linearGradient></defs>
+      <polygon points="${pts} ${w-pad},${h-pad} ${pad},${h-pad}" fill="url(#sg_${color.replace(/[^a-z0-9]/g,'')})" />
+      <polyline points="${pts}" fill="none" stroke="${trend}" stroke-width="1.5" stroke-linecap="round"/>
+      <circle cx="${(pad + (vals.length-1)/(vals.length-1)*(w-2*pad)).toFixed(1)}" cy="${(h-pad-((last-mn)/range)*(h-2*pad)).toFixed(1)}" r="2.5" fill="${trend}"/>
+    </svg>`;
+  }
+  function integrityRing(guarded, total, size=36) {
+    const r = (size - 4) / 2, c = size / 2, circ = 2 * Math.PI * r;
+    const pct = total > 0 ? guarded / total : 0;
+    const color = pct >= 0.7 ? 'var(--green)' : pct >= 0.4 ? 'var(--yellow)' : 'var(--red)';
+    return `<svg class="ring-svg" width="${size}" height="${size}">
+      <circle cx="${c}" cy="${c}" r="${r}" fill="none" stroke="var(--border)" stroke-width="3"/>
+      <circle cx="${c}" cy="${c}" r="${r}" fill="none" stroke="${color}" stroke-width="3"
+        stroke-dasharray="${(circ*pct).toFixed(1)} ${(circ*(1-pct)).toFixed(1)}" stroke-linecap="round"/>
+    </svg>`;
+  }
 
-  // Overview cards
+  // ── Navigation ──
   (() => {
-    const el = document.getElementById('overview');
-    const benchTs = D.bench ? D.bench.timestamp.split('T')[0] : 'n/a';
-    const totalMs = D.bench ? D.bench.total_ms : 0;
-    const avgThroughput = D.bench ? Math.round(D.bench.avg_throughput) : 0;
-    const survivors = D.walk_forward
-      ? D.walk_forward.summaries.filter(s => s.survives_correction).length
-      : 0;
-    const totalStrats = D.walk_forward ? D.walk_forward.summaries.length : 0;
-    const hypoCount = D.hypotheses.length;
+    const nav = document.getElementById('nav-links');
+    nav.innerHTML = sections.map((s, i) =>
+      `<a href="#${s.id}" class="nav-link${i===0?' active':''}" data-idx="${i}">${s.dataset.nav}</a>`
+    ).join('');
+    const links = nav.querySelectorAll('.nav-link');
+
+    // Intersection observer for active section highlighting
+    const obs = new IntersectionObserver(entries => {
+      for (const e of entries) {
+        if (e.isIntersecting) {
+          const idx = sections.indexOf(e.target);
+          if (idx >= 0) {
+            links.forEach(l => l.classList.remove('active'));
+            links[idx].classList.add('active');
+            activeSec = idx;
+          }
+        }
+      }
+    }, { rootMargin: '-20% 0px -70% 0px' });
+    sections.forEach(s => obs.observe(s));
+
+    // Nav status
+    const status = document.getElementById('nav-status');
+    const [g] = D.integrity_score.split('/').map(Number);
+    status.innerHTML = `<span class="status-dot ok"></span> ${D.test_count} tests <span style="color:var(--border);">|</span> ${D.integrity_score} guarded`;
+  })();
+
+  // ── Hero ──
+  (() => {
+    const el = document.getElementById('hero');
+    const date = D.generated.split('T')[0];
+    const survivors = D.walk_forward ? D.walk_forward.summaries.filter(s => s.survives_correction).length : '?';
+    const totalStrats = D.walk_forward ? D.walk_forward.summaries.length : '?';
     const established = D.hypotheses.filter(h => h.status === 'established').length;
 
     el.innerHTML = `
-      <div class="card"><h3>Tests</h3><div class="val">${D.test_count}</div><div class="detail">all passing</div></div>
-      <div class="card"><h3>Datasets</h3><div class="val">${D.dataset_count}</div><div class="detail">CSV files in data/</div></div>
-      <div class="card"><h3>Throughput</h3><div class="val">${avgThroughput.toLocaleString()}</div><div class="detail">candles/sec (avg)</div></div>
-      <div class="card"><h3>Bench Time</h3><div class="val">${totalMs}ms</div><div class="detail">${benchTs}</div></div>
-      <div class="card"><h3>WF Survivors</h3><div class="val">${survivors}/${totalStrats}</div><div class="detail">after Bonferroni</div></div>
-      <div class="card"><h3>Hypotheses</h3><div class="val">${hypoCount}</div><div class="detail">${established} established</div></div>
-      <div class="card"><h3>Integrity</h3><div class="val">${D.integrity_score}</div><div class="detail">traps guarded</div></div>
-      <div class="card"><h3>Evidence</h3><div class="val">${D.stv_history.length}</div><div class="detail">STV updates logged</div></div>
+      <h1>ArbitrageFX Workbench</h1>
+      <div class="hero-sub">${date} &middot; git ${D.git_sha} &middot; hypothesis-driven backtesting research</div>
+      <div class="hero-findings">
+        <div class="finding" style="border-color:var(--green-border);">
+          <span class="finding-icon" style="color:var(--green);">&#9670;</span>
+          <span><b>${established}</b> hypotheses established &mdash; capital preservation confirmed as edge</span>
+        </div>
+        <div class="finding" style="border-color:var(--red-border);">
+          <span class="finding-icon" style="color:var(--red);">&#9670;</span>
+          <span><b>${survivors}/${totalStrats}</b> strategies survive walk-forward correction</span>
+        </div>
+        <div class="finding" style="border-color:var(--yellow-border);">
+          <span class="finding-icon" style="color:var(--yellow);">&#9670;</span>
+          <span><b>${D.integrity_score}</b> backtest traps guarded</span>
+        </div>
+      </div>
     `;
   })();
 
-  // Profiling bars
+  // ── Overview Cards ──
+  (() => {
+    const el = document.getElementById('overview');
+    const b = D.bench;
+    const benchTs = b ? b.timestamp.split('T')[0] : 'n/a';
+    const tp = b ? Math.round(b.avg_throughput) : 0;
+    const ms = b ? b.total_ms : 0;
+    const surv = D.walk_forward ? D.walk_forward.summaries.filter(s => s.survives_correction).length : 0;
+    const tot = D.walk_forward ? D.walk_forward.summaries.length : 0;
+    const est = D.hypotheses.filter(h => h.status === 'established').length;
+    const [g, t] = D.integrity_score.split('/').map(Number);
+
+    el.innerHTML = `
+      <div class="card accent-green"><div class="card-label">Tests</div><div class="card-val">${D.test_count}</div><div class="card-detail">all passing</div></div>
+      <div class="card accent-blue"><div class="card-label">Datasets</div><div class="card-val">${D.dataset_count}</div><div class="card-detail">CSV regime files</div></div>
+      <div class="card accent-blue"><div class="card-label">Throughput</div><div class="card-val">${fmt(tp)}</div><div class="card-detail">candles/sec</div></div>
+      <div class="card"><div class="card-label">Bench Time</div><div class="card-val">${ms}<span style="font-size:0.7rem;font-weight:400;">ms</span></div><div class="card-detail">${benchTs}</div></div>
+      <div class="card accent-red"><div class="card-label">WF Survivors</div><div class="card-val">${surv}/${tot}</div><div class="card-detail">after Bonferroni</div></div>
+      <div class="card accent-green"><div class="card-label">Hypotheses</div><div class="card-val">${D.hypotheses.length}</div><div class="card-detail">${est} established</div></div>
+      <div class="card accent-${g/t >= 0.5 ? 'yellow' : 'red'}">
+        <div class="card-label">Integrity</div>
+        <div class="card-val" style="display:flex;align-items:center;gap:0.4rem;">${integrityRing(g,t)} ${D.integrity_score}</div>
+        <div class="card-detail">traps guarded</div>
+      </div>
+      <div class="card"><div class="card-label">Evidence</div><div class="card-val">${D.stv_history.length}</div><div class="card-detail">STV updates</div></div>
+    `;
+  })();
+
+  // ── Profiling ──
   (() => {
     if (!D.bench) return;
     const el = document.getElementById('profiling');
-    const datasets = D.bench.datasets;
-    const maxMs = Math.max(...datasets.map(d => d.backtest_ms + d.walkforward_ms), 1);
+    const ds = D.bench.datasets;
+    const maxMs = Math.max(...ds.map(d => d.backtest_ms + d.walkforward_ms), 1);
 
-    let html = '<table><tr><th>Dataset</th><th>Candles</th><th>Regime</th><th>Backtest</th><th>Walk-Fwd</th><th>Throughput</th><th>RSS</th></tr>';
-    for (const d of datasets) {
+    let html = '<div class="table-wrap"><table><thead><tr><th>Dataset</th><th class="text-right">Candles</th><th>Regime</th><th class="text-right">Backtest</th><th class="text-right">Walk-Fwd</th><th class="text-right">Throughput</th><th class="text-right">RSS</th></tr></thead><tbody>';
+    for (const d of ds) {
       html += `<tr>
         <td class="mono">${d.name}</td>
-        <td class="mono">${d.candles.toLocaleString()}</td>
+        <td class="mono text-right">${fmt(d.candles)}</td>
         <td><span class="badge badge-blue">${d.regime.dominant_regime}</span></td>
-        <td class="mono">${d.backtest_ms}ms</td>
-        <td class="mono">${d.walkforward_ms}ms</td>
-        <td class="mono">${Math.round(d.throughput_candles_per_sec).toLocaleString()} c/s</td>
-        <td class="mono">${d.peak_rss_kb ? d.peak_rss_kb.toLocaleString() + ' KB' : 'n/a'}</td>
+        <td class="mono text-right">${d.backtest_ms}ms</td>
+        <td class="mono text-right">${d.walkforward_ms}ms</td>
+        <td class="mono text-right">${fmt(Math.round(d.throughput_candles_per_sec))} c/s</td>
+        <td class="mono text-right">${d.peak_rss_kb ? fmt(d.peak_rss_kb)+' KB' : 'n/a'}</td>
       </tr>`;
     }
-    html += '</table>';
-
-    // Timing bars
-    html += '<div style="margin-top: 1rem;">';
-    for (const d of datasets) {
-      const btPct = (d.backtest_ms / maxMs * 100).toFixed(1);
-      const wfPct = (d.walkforward_ms / maxMs * 100).toFixed(1);
-      html += `<div class="bar-container">
-        <span class="bar-label">${d.name}</span>
+    html += '</tbody></table></div>';
+    html += '<div style="margin-top:1rem;">';
+    for (const d of ds) {
+      const btPct = d.backtest_ms / maxMs * 100;
+      const wfPct = d.walkforward_ms / maxMs * 100;
+      html += `<div class="bar-row">
+        <span class="bar-label">${d.name.replace('btc_','').replace('_1h','')}</span>
         <div class="bar-track">
-          <div class="bar-fill" style="width: ${btPct}%; background: var(--accent); display: inline-block; position: absolute;"></div>
-          <div class="bar-fill" style="width: ${(parseFloat(btPct) + parseFloat(wfPct))}%; background: #1a3050; position: absolute;"></div>
-          <div class="bar-fill" style="width: ${btPct}%; background: var(--accent); position: absolute;"></div>
+          <div class="bar-seg" style="width:${btPct.toFixed(1)}%;background:var(--accent);"></div>
+          <div class="bar-seg" style="width:${wfPct.toFixed(1)}%;background:var(--accent-muted);"></div>
         </div>
-        <span class="bar-value">${d.backtest_ms + d.walkforward_ms}ms</span>
+        <span class="bar-val">${d.backtest_ms + d.walkforward_ms}ms</span>
       </div>`;
     }
     html += '</div>';
-    html += '<div style="font-size: 0.7rem; color: #484f58; margin-top: 0.3rem;">Blue = backtest, dark = walk-forward</div>';
-
+    html += '<div class="chart-legend"><span><span class="legend-line" style="background:var(--accent);"></span> Backtest</span><span><span class="legend-line" style="background:var(--accent-muted);"></span> Walk-forward</span></div>';
     el.innerHTML = html;
   })();
 
-  // Heatmap: Strategy x Regime
+  // ── Heatmap ──
   (() => {
     if (!D.bench) return;
     const el = document.getElementById('heatmap');
-    const datasets = D.bench.datasets;
+    const ds = D.bench.datasets;
+    if (!ds.length || !ds[0].backtest_result) return;
+    const stratIds = ds[0].backtest_result.strategies.map(s => s.id);
+    const regimes = ds.map(d => d.name.replace('btc_','').replace('_1h',''));
 
-    // Collect all strategy IDs from first dataset
-    if (datasets.length === 0 || !datasets[0].backtest_result) return;
-    const stratIds = datasets[0].backtest_result.strategies.map(s => s.id);
-    const regimeNames = datasets.map(d => d.name.replace('btc_', '').replace('_1h', ''));
-
-    const cols = regimeNames.length + 1;
-    let html = `<div class="heatmap" style="grid-template-columns: 100px repeat(${regimeNames.length}, 1fr);">`;
-
-    // Header row
-    html += '<div class="heatmap-header"></div>';
-    for (const r of regimeNames) {
-      html += `<div class="heatmap-header">${r}</div>`;
-    }
-
-    // Data rows
+    let html = `<div class="heatmap" style="grid-template-columns:90px repeat(${regimes.length},1fr);">`;
+    html += '<div class="hm-head"></div>';
+    for (const r of regimes) html += `<div class="hm-head">${r}</div>`;
     for (let si = 0; si < stratIds.length; si++) {
-      html += `<div class="heatmap-header" style="text-align: right;">${stratIds[si]}</div>`;
-      for (let di = 0; di < datasets.length; di++) {
-        const strat = datasets[di].backtest_result.strategies[si];
-        if (!strat) {
-          html += '<div class="heatmap-cell" style="background: #21262d;">-</div>';
-          continue;
-        }
-        const pnl = strat.equity_pnl;
-        const color = pnl > 0
-          ? `rgba(63, 185, 80, ${Math.min(Math.abs(pnl) / 10, 0.8)})`
-          : `rgba(248, 81, 73, ${Math.min(Math.abs(pnl) / 10, 0.8)})`;
-        html += `<div class="heatmap-cell" style="background: ${color};">${pnl >= 0 ? '+' : ''}${pnl.toFixed(2)}</div>`;
+      html += `<div class="hm-head" style="text-align:right;">${stratIds[si]}</div>`;
+      for (let di = 0; di < ds.length; di++) {
+        const st = ds[di].backtest_result.strategies[si];
+        if (!st) { html += '<div class="hm-cell" style="background:#21262d;">-</div>'; continue; }
+        const p = st.equity_pnl;
+        const a = Math.min(Math.abs(p) / 8, 0.85);
+        const bg = p > 0 ? `rgba(63,185,80,${a})` : p < 0 ? `rgba(248,81,73,${a})` : 'rgba(139,148,158,0.1)';
+        const dd = st.max_drawdown !== undefined ? ` DD:${(st.max_drawdown*100).toFixed(1)}%` : '';
+        html += `<div class="hm-cell tip" style="background:${bg};" data-tip="${st.id} ${pnlSign(p)}${dd}">${pnlSign(p)}</div>`;
       }
     }
     html += '</div>';
-    html += '<div style="font-size: 0.7rem; color: #484f58; margin-top: 0.3rem;">Green = positive equity PnL, Red = negative. Intensity = magnitude.</div>';
+    html += '<div class="chart-legend" style="margin-top:0.4rem;"><span><span class="legend-line" style="background:var(--green);"></span> Positive PnL</span><span><span class="legend-line" style="background:var(--red);"></span> Negative PnL</span><span style="color:var(--fg-subtle);">Hover for details</span></div>';
     el.innerHTML = html;
   })();
 
-  // Walk-forward
+  // ── Walk-Forward ──
   (() => {
     if (!D.walk_forward) return;
     const el = document.getElementById('walkforward');
     const wf = D.walk_forward;
-    let html = `<p style="font-size: 0.8rem; color: #8b949e; margin-bottom: 0.5rem;">
-      ${wf.num_windows} windows &middot; ${wf.num_strategies} strategies &middot; ${wf.num_comparisons} comparisons &middot; ${wf.correction_method} &alpha;=${wf.alpha}
-    </p>`;
-    html += '<table><tr><th>Strategy</th><th>Train PnL</th><th>Test PnL</th><th>Overfit Ratio</th><th>P-value</th><th>Positive</th><th>Survives?</th></tr>';
+    let html = `<div style="display:flex;gap:0.6rem;flex-wrap:wrap;margin-bottom:0.75rem;">
+      <span class="badge badge-gray">${wf.num_windows} windows</span>
+      <span class="badge badge-gray">${wf.num_strategies} strategies</span>
+      <span class="badge badge-gray">${wf.correction_method}</span>
+      <span class="badge badge-gray">&alpha;=${wf.alpha}</span>
+    </div>`;
+    html += '<div class="table-wrap"><table><thead><tr><th>Strategy</th><th class="text-right">Train PnL</th><th class="text-right">Test PnL</th><th class="text-right">Overfit</th><th class="text-right">P-value</th><th class="text-center">Positive</th><th class="text-center">Survives</th></tr></thead><tbody>';
     for (const s of wf.summaries) {
-      const survBadge = s.survives_correction
-        ? '<span class="badge badge-green">YES</span>'
-        : '<span class="badge badge-red">no</span>';
-      const orClass = s.overfit_ratio > 0.5 ? 'color: var(--green)' : s.overfit_ratio > 0 ? 'color: var(--yellow)' : 'color: var(--red)';
+      const orColor = s.overfit_ratio > 0.5 ? 'var(--green)' : s.overfit_ratio > 0 ? 'var(--yellow)' : 'var(--red)';
       html += `<tr>
         <td class="mono">${s.id}</td>
-        <td class="mono">${s.train_mean_pnl >= 0 ? '+' : ''}${s.train_mean_pnl.toFixed(4)}</td>
-        <td class="mono">${s.test_mean_pnl >= 0 ? '+' : ''}${s.test_mean_pnl.toFixed(4)}</td>
-        <td class="mono" style="${orClass}">${s.overfit_ratio.toFixed(3)}</td>
-        <td class="mono">${s.p_value.toFixed(3)}</td>
-        <td class="mono">${s.test_positive_windows}/${s.total_windows}</td>
-        <td>${survBadge}</td>
+        <td class="mono text-right" style="color:${pnlColor(s.train_mean_pnl)}">${pnlSign(s.train_mean_pnl,4)}</td>
+        <td class="mono text-right" style="color:${pnlColor(s.test_mean_pnl)}">${pnlSign(s.test_mean_pnl,4)}</td>
+        <td class="mono text-right" style="color:${orColor}">${s.overfit_ratio.toFixed(3)}</td>
+        <td class="mono text-right">${s.p_value.toFixed(3)}</td>
+        <td class="mono text-center">${s.test_positive_windows}/${s.total_windows}</td>
+        <td class="text-center">${s.survives_correction ? '<span class="badge badge-green">YES</span>' : '<span class="badge badge-red">no</span>'}</td>
       </tr>`;
     }
-    html += '</table>';
+    html += '</tbody></table></div>';
     el.innerHTML = html;
   })();
 
-  // Hypotheses
+  // ── Hypotheses ──
   (() => {
-    if (D.hypotheses.length === 0) return;
+    if (!D.hypotheses.length) return;
     const el = document.getElementById('hypotheses');
-    let html = '<table><tr><th>ID</th><th>Hypothesis</th><th>Strength</th><th>Confidence</th><th>Status</th></tr>';
+    let html = '<div class="table-wrap"><table><thead><tr><th>ID</th><th>Hypothesis</th><th class="text-right">Strength</th><th class="text-right">Confidence</th><th>Status</th><th>Assessment</th></tr></thead><tbody>';
     for (const h of D.hypotheses) {
-      const sColor = h.strength >= 0.7 ? 'var(--green)' : h.strength >= 0.4 ? 'var(--yellow)' : 'var(--red)';
-      const cColor = h.confidence >= 0.7 ? 'var(--green)' : h.confidence >= 0.4 ? 'var(--yellow)' : 'var(--red)';
-      const statusClass = h.status === 'established' ? 'badge-green'
-        : h.status === 'supported' ? 'badge-green'
-        : h.status === 'contested' ? 'badge-yellow'
-        : 'badge-red';
+      const sC = h.strength >= 0.7 ? 'var(--green)' : h.strength >= 0.4 ? 'var(--yellow)' : 'var(--red)';
+      const cC = h.confidence >= 0.7 ? 'var(--green)' : h.confidence >= 0.4 ? 'var(--yellow)' : 'var(--red)';
+      const cls = h.status === 'established' || h.status === 'supported' ? 'badge-green' : h.status === 'contested' ? 'badge-yellow' : 'badge-red';
       html += `<tr>
-        <td class="mono">${h.id}</td>
-        <td>${h.name}</td>
-        <td class="mono" style="color: ${sColor};">${h.strength.toFixed(2)}</td>
-        <td class="mono" style="color: ${cColor};">${h.confidence.toFixed(2)}</td>
-        <td><span class="badge ${statusClass}">${h.status}</span></td>
+        <td class="mono">${h.id}</td><td>${h.name}</td>
+        <td class="mono text-right" style="color:${sC}">${h.strength.toFixed(2)}</td>
+        <td class="mono text-right" style="color:${cC}">${h.confidence.toFixed(2)}</td>
+        <td><span class="badge ${cls}">${h.status}</span></td>
+        <td style="font-size:0.7rem;color:var(--fg-muted);max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${h.assessment}">${h.assessment}</td>
       </tr>`;
     }
-    html += '</table>';
+    html += '</tbody></table></div>';
     el.innerHTML = html;
   })();
 
-  // Evidence Timeline — sparklines per hypothesis
+  // ── Evidence Timeline ──
   (() => {
-    if (D.stv_history.length === 0) return;
+    if (!D.stv_history.length) return;
     const el = document.getElementById('timeline');
-
-    // Group by hypothesis_id
     const byH = {};
-    for (const e of D.stv_history) {
-      if (!byH[e.hypothesis_id]) byH[e.hypothesis_id] = [];
-      byH[e.hypothesis_id].push(e);
-    }
-
-    // Generate sparkline SVG
-    function sparkline(entries, field, color) {
-      const w = 120, h = 24, pad = 2;
-      const vals = entries.map(e => e.new_stv[field]);
-      if (vals.length < 2) {
-        const v = vals[0] || 0;
-        return `<svg class="sparkline-svg" width="${w}" height="${h}"><circle cx="${w/2}" cy="${h - pad - v*(h-2*pad)}" r="2" fill="${color}"/></svg>`;
-      }
-      const pts = vals.map((v, i) => {
-        const x = pad + (i / (vals.length - 1)) * (w - 2*pad);
-        const y = h - pad - v * (h - 2*pad);
-        return `${x.toFixed(1)},${y.toFixed(1)}`;
-      }).join(' ');
-      return `<svg class="sparkline-svg" width="${w}" height="${h}"><polyline points="${pts}" fill="none" stroke="${color}" stroke-width="1.5"/></svg>`;
-    }
-
-    let html = '<table><tr><th>Hypothesis</th><th>Strength</th><th>Confidence</th><th>Updates</th><th>Latest</th></tr>';
-    const ids = Object.keys(byH).sort();
-    for (const id of ids) {
-      const entries = byH[id];
-      const last = entries[entries.length - 1];
-      const sSparkline = sparkline(entries, 0, '#3fb950');
-      const cSparkline = sparkline(entries, 1, '#58a6ff');
+    for (const e of D.stv_history) { (byH[e.hypothesis_id] = byH[e.hypothesis_id] || []).push(e); }
+    let html = '<div class="table-wrap"><table><thead><tr><th>Hypothesis</th><th>Strength</th><th>Confidence</th><th class="text-right">Updates</th><th>Latest Observation</th></tr></thead><tbody>';
+    for (const id of Object.keys(byH).sort()) {
+      const ents = byH[id];
+      const last = ents[ents.length - 1];
+      const sVals = ents.map(e => e.new_stv[0]);
+      const cVals = ents.map(e => e.new_stv[1]);
       html += `<tr>
         <td class="mono">${id}</td>
-        <td><span class="sparkline-container">${sSparkline}</span> <span class="mono" style="font-size:0.7rem;">${last.new_stv[0].toFixed(2)}</span></td>
-        <td><span class="sparkline-container">${cSparkline}</span> <span class="mono" style="font-size:0.7rem;">${last.new_stv[1].toFixed(2)}</span></td>
-        <td class="mono">${entries.length}</td>
-        <td style="font-size:0.7rem;color:#8b949e;" title="${last.observation}">${last.dataset} — ${last.observation.substring(0, 50)}${last.observation.length > 50 ? '...' : ''}</td>
+        <td><div class="spark-wrap">${sparkSvg(sVals, '#3fb950')} <span class="spark-val" style="color:var(--green)">${last.new_stv[0].toFixed(2)}</span></div></td>
+        <td><div class="spark-wrap">${sparkSvg(cVals, '#58a6ff')} <span class="spark-val" style="color:var(--accent)">${last.new_stv[1].toFixed(2)}</span></div></td>
+        <td class="mono text-right">${ents.length}</td>
+        <td style="font-size:0.7rem;color:var(--fg-muted);max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${last.observation}">${last.dataset} &mdash; ${last.observation}</td>
       </tr>`;
     }
-    html += '</table>';
+    html += '</tbody></table></div>';
     el.innerHTML = html;
   })();
 
-  // Uncertainty Map — Kanban board
+  // ── Uncertainty Map ──
   (() => {
     const um = D.uncertainty_map;
     const cats = [
-      { key: 'well_established', label: 'Well-Established', color: 'var(--green)', border: '#1a4128' },
-      { key: 'supported', label: 'Supported', color: '#6fdd8b', border: '#2ea043' },
-      { key: 'contested', label: 'Contested', color: 'var(--yellow)', border: '#4d3800' },
-      { key: 'fragile', label: 'Fragile', color: 'var(--red)', border: '#4d0000' },
-      { key: 'untested', label: 'Untested', color: '#8b949e', border: '#30363d' },
+      { key:'well_established', label:'Well-Established', color:'var(--green)' },
+      { key:'supported', label:'Supported', color:'#6fdd8b' },
+      { key:'contested', label:'Contested', color:'var(--yellow)' },
+      { key:'fragile', label:'Fragile', color:'var(--red)' },
+      { key:'untested', label:'Untested', color:'var(--fg-muted)' }
     ];
-    const hasAny = cats.some(c => (um[c.key] || []).length > 0);
-    if (!hasAny) return;
-
+    if (!cats.some(c => (um[c.key]||[]).length)) return;
     const el = document.getElementById('uncertainty');
     let html = '<div class="kanban">';
-    for (const cat of cats) {
-      const items = um[cat.key] || [];
-      html += `<div class="kanban-col" style="border-top: 3px solid ${cat.color};">`;
-      html += `<h4 style="color: ${cat.color};">${cat.label} (${items.length})</h4>`;
-      if (items.length === 0) {
-        html += '<div class="kanban-empty">none</div>';
-      } else {
-        for (const item of items) {
-          html += `<div class="kanban-item">${item}</div>`;
-        }
-      }
+    for (const c of cats) {
+      const items = um[c.key] || [];
+      html += `<div class="kanban-col" style="border-top-color:${c.color};">
+        <div class="kanban-title" style="color:${c.color};">${c.label} <span class="kanban-count">${items.length}</span></div>`;
+      if (!items.length) html += '<div class="kanban-empty">none</div>';
+      else for (const it of items) html += `<div class="kanban-item">${it}</div>`;
       html += '</div>';
     }
     html += '</div>';
     el.innerHTML = html;
   })();
 
-  // Trap Checklist — 18-point backtest trap integrity
+  // ── Trap Checklist ──
   (() => {
-    if (D.trap_status.length === 0) return;
+    if (!D.trap_status.length) return;
     const el = document.getElementById('traps');
-
-    const guarded = D.trap_status.filter(t => t.guard === 'Guarded').length;
-    const partial = D.trap_status.filter(t => t.guard === 'Partial').length;
-    const unguarded = D.trap_status.filter(t => t.guard === 'Unguarded').length;
-
-    let html = `<p style="font-size:0.8rem;color:#8b949e;margin-bottom:0.5rem;">
-      <span class="badge badge-green">${guarded} guarded</span>
-      <span class="badge badge-yellow">${partial} partial</span>
-      <span class="badge badge-red">${unguarded} unguarded</span>
-    </p>`;
-    html += '<table><tr><th>#</th><th></th><th>Trap</th><th>Severity</th><th>Guard</th><th>Evidence</th></tr>';
+    const g = D.trap_status.filter(t => t.guard==='Guarded').length;
+    const p = D.trap_status.filter(t => t.guard==='Partial').length;
+    const u = D.trap_status.filter(t => t.guard==='Unguarded').length;
+    let html = `<div style="display:flex;gap:0.5rem;margin-bottom:0.75rem;flex-wrap:wrap;">
+      <span class="badge badge-green">${g} guarded</span>
+      <span class="badge badge-yellow">${p} partial</span>
+      <span class="badge badge-red">${u} unguarded</span>
+    </div>`;
+    html += '<div class="table-wrap"><table><thead><tr><th style="width:30px">#</th><th style="width:20px"></th><th>Trap</th><th>Severity</th><th>Guard</th><th>Evidence</th></tr></thead><tbody>';
     for (const t of D.trap_status) {
-      const sevClass = t.severity === 'Critical' ? 'badge-red' : t.severity === 'High' ? 'badge-yellow' : 'badge-blue';
+      const sc = t.severity==='Critical'?'badge-red':t.severity==='High'?'badge-yellow':'badge-blue';
+      const gc = t.guard==='Guarded'?'guarded':t.guard==='Partial'?'partial':'unguarded';
+      const gcb = t.guard==='Guarded'?'badge-green':t.guard==='Partial'?'badge-yellow':'badge-red';
       html += `<tr>
-        <td class="mono">${t.id}</td>
-        <td><span class="trap-guard trap-guard-${t.guard}"></span></td>
+        <td class="mono text-center">${t.id}</td>
+        <td><span class="trap-dot ${gc}"></span></td>
         <td>${t.name}</td>
-        <td><span class="badge ${sevClass}">${t.severity}</span></td>
-        <td><span class="badge badge-${t.guard === 'Guarded' ? 'green' : t.guard === 'Partial' ? 'yellow' : 'red'}">${t.guard}</span></td>
-        <td style="font-size:0.7rem;color:#8b949e;">${t.evidence}</td>
+        <td><span class="badge ${sc}">${t.severity}</span></td>
+        <td><span class="badge ${gcb}">${t.guard}</span></td>
+        <td style="font-size:0.7rem;color:var(--fg-muted);">${t.evidence}</td>
       </tr>`;
     }
-    html += '</table>';
+    html += '</tbody></table></div>';
     el.innerHTML = html;
   })();
 
-  // Regime Leaderboard — ranked strategies per regime
+  // ── Regime Leaderboard ──
   (() => {
     if (!D.bench) return;
     const el = document.getElementById('leaderboard');
-    const datasets = D.bench.datasets;
-    if (datasets.length === 0 || !datasets[0].backtest_result) return;
-
-    let html = '<div class="leaderboard">';
-    for (const d of datasets) {
-      const regime = d.name.replace('btc_', '').replace('_1h', '');
-      const strats = d.backtest_result.strategies.slice().sort((a, b) => b.equity_pnl - a.equity_pnl);
-      html += `<div class="leaderboard-col">`;
-      html += `<h4>${regime}</h4>`;
+    const ds = D.bench.datasets;
+    if (!ds.length || !ds[0].backtest_result) return;
+    let html = '<div class="lb-grid">';
+    for (const d of ds) {
+      const regime = d.name.replace('btc_','').replace('_1h','');
+      const strats = d.backtest_result.strategies.slice().sort((a,b) => b.equity_pnl - a.equity_pnl);
+      html += `<div class="lb-col"><div class="lb-title">${regime}</div>`;
       for (let i = 0; i < strats.length; i++) {
         const s = strats[i];
-        const pnlColor = s.equity_pnl >= 0 ? 'var(--green)' : 'var(--red)';
-        const ddSafe = s.max_drawdown <= 0.02;
-        const safeIcon = ddSafe ? ' &#9679;' : '';
-        html += `<div class="rank-item">
-          <span><span class="rank-pos">${i+1}.</span> ${s.id}</span>
-          <span style="color:${pnlColor};">${s.equity_pnl >= 0 ? '+' : ''}${s.equity_pnl.toFixed(2)}${ddSafe ? '<span style="color:var(--green);font-size:0.6rem;" title="DD < 2%"> &#x2713;</span>' : ''}</span>
+        const safe = s.max_drawdown <= 0.02;
+        html += `<div class="lb-row">
+          <span><span class="lb-rank">${i+1}.</span> ${s.id}${safe ? ' <span style="color:var(--green);font-size:0.6rem;" title="DD < 2%">&#x2713;</span>' : ''}</span>
+          <span style="color:${pnlColor(s.equity_pnl)}">${pnlSign(s.equity_pnl)}</span>
         </div>`;
       }
       html += '</div>';
     }
     html += '</div>';
-    html += '<div style="font-size:0.7rem;color:#484f58;margin-top:0.3rem;">&#x2713; = max drawdown &lt; 2%. Ranked by equity PnL.</div>';
+    html += '<div class="chart-legend" style="margin-top:0.5rem;"><span style="color:var(--green);">&#x2713; = max drawdown &lt; 2%</span><span>Ranked by equity PnL</span></div>';
     el.innerHTML = html;
   })();
 
-  // Resource Trends — throughput + candles over bench history
+  // ── Resource Trends ──
   (() => {
     if (D.bench_history.length < 1) return;
     const el = document.getElementById('trends');
     const data = D.bench_history;
-    const w = 600, h = 120, pad = 40;
+    const w = 700, h = 140, pad = 45;
+    const maxT = Math.max(...data.map(d => d.avg_throughput), 1);
+    const maxM = Math.max(...data.map(d => d.total_ms), 1);
 
-    const maxThroughput = Math.max(...data.map(d => d.avg_throughput), 1);
-    const maxMs = Math.max(...data.map(d => d.total_ms), 1);
-
-    let svg = `<svg class="trend-svg" viewBox="0 0 ${w} ${h}" style="width:100%;max-width:${w}px;">`;
-    // Background
-    svg += `<rect x="0" y="0" width="${w}" height="${h}" fill="var(--card-bg)" rx="4"/>`;
-
-    if (data.length === 1) {
-      // Single point — show as centered bars
-      const barW = 40;
-      const tH = (data[0].avg_throughput / maxThroughput) * (h - pad);
-      svg += `<rect x="${w/2 - barW - 5}" y="${h - pad - tH}" width="${barW}" height="${tH}" fill="var(--accent)" opacity="0.7" rx="2"/>`;
-      svg += `<text x="${w/2 - barW/2 - 5}" y="${h - pad + 12}" fill="#8b949e" font-size="9" text-anchor="middle">${data[0].date}</text>`;
-      svg += `<text x="${w/2 - barW/2 - 5}" y="${h - pad - tH - 4}" fill="var(--accent)" font-size="9" text-anchor="middle">${Math.round(data[0].avg_throughput)} c/s</text>`;
-    } else {
-      // Multiple points — line chart
-      const tPts = data.map((d, i) => {
-        const x = pad + (i / (data.length - 1)) * (w - 2*pad);
-        const y = h - pad - (d.avg_throughput / maxThroughput) * (h - 2*pad);
-        return `${x.toFixed(1)},${y.toFixed(1)}`;
-      }).join(' ');
-      svg += `<polyline points="${tPts}" fill="none" stroke="var(--accent)" stroke-width="2"/>`;
-
-      // Data points
-      for (let i = 0; i < data.length; i++) {
-        const x = pad + (i / (data.length - 1)) * (w - 2*pad);
-        const y = h - pad - (data[i].avg_throughput / maxThroughput) * (h - 2*pad);
-        svg += `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="3" fill="var(--accent)"/>`;
-        svg += `<text x="${x.toFixed(1)}" y="${h - pad + 12}" fill="#8b949e" font-size="8" text-anchor="middle">${data[i].date.substring(5)}</text>`;
-      }
-
-      // Time bars overlay
-      const mPts = data.map((d, i) => {
-        const x = pad + (i / (data.length - 1)) * (w - 2*pad);
-        const y = h - pad - (d.total_ms / maxMs) * (h - 2*pad);
-        return `${x.toFixed(1)},${y.toFixed(1)}`;
-      }).join(' ');
-      svg += `<polyline points="${mPts}" fill="none" stroke="var(--yellow)" stroke-width="1.5" stroke-dasharray="4,3" opacity="0.6"/>`;
+    let svg = `<div class="chart-container"><svg viewBox="0 0 ${w} ${h}" style="width:100%;">`;
+    // Grid lines
+    for (let i = 0; i <= 4; i++) {
+      const y = pad + (i/4) * (h - 2*pad);
+      svg += `<line x1="${pad}" y1="${y}" x2="${w-pad}" y2="${y}" stroke="var(--border)" stroke-width="0.5"/>`;
     }
-
-    // Axis labels
-    svg += `<text x="${pad - 4}" y="14" fill="var(--accent)" font-size="9" text-anchor="end">c/s</text>`;
-    svg += `<text x="${w - pad + 4}" y="14" fill="var(--yellow)" font-size="9" opacity="0.6">ms</text>`;
+    if (data.length === 1) {
+      const barW = 50;
+      const tH = (data[0].avg_throughput / maxT) * (h - 2*pad);
+      svg += `<rect x="${w/2-barW/2}" y="${h-pad-tH}" width="${barW}" height="${tH}" fill="var(--accent)" opacity="0.7" rx="3"/>`;
+      svg += `<text x="${w/2}" y="${h-pad+14}" fill="var(--fg-muted)" font-size="9" text-anchor="middle" font-family="var(--mono)">${data[0].date}</text>`;
+      svg += `<text x="${w/2}" y="${h-pad-tH-6}" fill="var(--accent)" font-size="10" text-anchor="middle" font-family="var(--mono)">${fmt(Math.round(data[0].avg_throughput))} c/s</text>`;
+    } else {
+      // Throughput area
+      const tPts = data.map((d, i) => {
+        const x = pad + (i/(data.length-1)) * (w-2*pad);
+        const y = h - pad - (d.avg_throughput/maxT) * (h-2*pad);
+        return [x,y];
+      });
+      const areaPts = tPts.map(p => `${p[0].toFixed(1)},${p[1].toFixed(1)}`).join(' ');
+      svg += `<defs><linearGradient id="tg" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="var(--accent)" stop-opacity="0.15"/><stop offset="100%" stop-color="var(--accent)" stop-opacity="0"/></linearGradient></defs>`;
+      svg += `<polygon points="${areaPts} ${tPts[tPts.length-1][0].toFixed(1)},${h-pad} ${tPts[0][0].toFixed(1)},${h-pad}" fill="url(#tg)"/>`;
+      svg += `<polyline points="${areaPts}" fill="none" stroke="var(--accent)" stroke-width="2" stroke-linecap="round"/>`;
+      for (const [x,y] of tPts) svg += `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="3" fill="var(--accent)"/>`;
+      // Time overlay
+      const mPts = data.map((d, i) => {
+        const x = pad + (i/(data.length-1)) * (w-2*pad);
+        const y = h - pad - (d.total_ms/maxM) * (h-2*pad);
+        return `${x.toFixed(1)},${y.toFixed(1)}`;
+      }).join(' ');
+      svg += `<polyline points="${mPts}" fill="none" stroke="var(--yellow)" stroke-width="1.5" stroke-dasharray="5,3" opacity="0.5"/>`;
+      // X labels
+      for (let i = 0; i < data.length; i++) {
+        const x = pad + (i/(data.length-1)) * (w-2*pad);
+        svg += `<text x="${x.toFixed(1)}" y="${h-pad+14}" fill="var(--fg-subtle)" font-size="8" text-anchor="middle" font-family="var(--mono)">${data[i].date.substring(5)}</text>`;
+      }
+    }
+    // Y labels
+    svg += `<text x="${pad-6}" y="${pad+4}" fill="var(--fg-subtle)" font-size="8" text-anchor="end" font-family="var(--mono)">${fmt(Math.round(maxT))}</text>`;
+    svg += `<text x="${pad-6}" y="${h-pad+4}" fill="var(--fg-subtle)" font-size="8" text-anchor="end" font-family="var(--mono)">0</text>`;
     svg += '</svg>';
-    svg += '<div style="font-size:0.7rem;color:#484f58;">Blue solid = throughput (c/s). Yellow dashed = total time (ms).</div>';
-
+    svg += '<div class="chart-legend"><span><span class="legend-line" style="background:var(--accent);"></span> Throughput (c/s)</span><span><span class="legend-line" style="background:var(--yellow);border-style:dashed;"></span> Total time (ms)</span></div>';
+    svg += '</div>';
     el.innerHTML = svg;
   })();
 
-  // History
+  // ── History ──
   (() => {
     const el = document.getElementById('history');
     let html = '';
-
     if (D.bench_history.length > 0) {
-      html += '<h3 style="color: #f0f6fc; font-size: 0.9rem; margin-bottom: 0.5rem;">Bench Runs</h3>';
-      html += '<table><tr><th>Date</th><th>Candles</th><th>Time</th><th>Throughput</th></tr>';
+      html += '<div class="table-wrap"><table><thead><tr><th>Date</th><th class="text-right">Candles</th><th class="text-right">Time</th><th class="text-right">Throughput</th></tr></thead><tbody>';
       for (const b of D.bench_history) {
-        html += `<tr>
-          <td class="mono">${b.date}</td>
-          <td class="mono">${b.total_candles.toLocaleString()}</td>
-          <td class="mono">${b.total_ms}ms</td>
-          <td class="mono">${Math.round(b.avg_throughput).toLocaleString()} c/s</td>
-        </tr>`;
+        html += `<tr><td class="mono">${b.date}</td><td class="mono text-right">${fmt(b.total_candles)}</td><td class="mono text-right">${b.total_ms}ms</td><td class="mono text-right">${fmt(Math.round(b.avg_throughput))} c/s</td></tr>`;
       }
-      html += '</table>';
+      html += '</tbody></table></div>';
     }
-
     if (D.run_history.length > 0) {
-      html += '<h3 style="color: #f0f6fc; font-size: 0.9rem; margin: 1rem 0 0.5rem;">Pipeline Runs</h3>';
-      html += '<table><tr><th>Date</th><th>Report</th></tr>';
-      for (const r of D.run_history) {
-        html += `<tr><td class="mono">${r.date}</td><td class="mono" style="color: #8b949e;">${r.path}</td></tr>`;
-      }
-      html += '</table>';
+      html += `<div style="margin-top:0.75rem;" class="table-wrap"><table><thead><tr><th>Date</th><th>Report</th></tr></thead><tbody>`;
+      for (const r of D.run_history) html += `<tr><td class="mono">${r.date}</td><td class="mono" style="color:var(--fg-muted);">${r.path}</td></tr>`;
+      html += '</tbody></table></div>';
     }
-
-    if (html === '') {
-      html = '<p class="empty-state">No historical data yet. Run the pipeline to generate history.</p>';
-    }
+    if (!html) html = '<p class="empty">No historical data yet. Run the pipeline to generate history.</p>';
     el.innerHTML = html;
   })();
 
-  // Footer
-  document.getElementById('footer').textContent =
-    `Generated ${D.generated} · git ${D.git_sha} · ArbitrageFX Workbench`;
+  // ── Footer ──
+  document.getElementById('footer-left').textContent = `Generated ${D.generated} \u00b7 git ${D.git_sha}`;
+
+  // ── Keyboard Navigation ──
+  (() => {
+    const hint = document.getElementById('kbd-hint');
+    let hintTimer;
+    function showHint() { hint.classList.add('show'); clearTimeout(hintTimer); hintTimer = setTimeout(() => hint.classList.remove('show'), 2000); }
+
+    document.addEventListener('keydown', e => {
+      if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+      if (e.key === 'j') { activeSec = Math.min(activeSec + 1, sections.length - 1); sections[activeSec].scrollIntoView({behavior:'smooth'}); showHint(); }
+      else if (e.key === 'k') { activeSec = Math.max(activeSec - 1, 0); sections[activeSec].scrollIntoView({behavior:'smooth'}); showHint(); }
+      else if (e.key === 'c') { sections[activeSec].classList.toggle('collapsed'); showHint(); }
+    });
+    // Show hint briefly on load
+    setTimeout(() => { hint.classList.add('show'); setTimeout(() => hint.classList.remove('show'), 3000); }, 1500);
+  })();
   </script>
 </body>
 </html>"##;
