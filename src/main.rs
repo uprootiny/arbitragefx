@@ -2,6 +2,7 @@ mod adapter;
 mod drift_tracker;
 mod exchange;
 mod feed;
+mod indicators;
 mod live_ops;
 mod logging;
 mod metrics;

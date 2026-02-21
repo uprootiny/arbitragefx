@@ -301,8 +301,8 @@ impl<T: Copy> RingBuffer<T> {
 
 #[derive(Clone)]
 struct IndicatorState {
-    ema_fast: f64,
-    ema_slow: f64,
+    ema_fast: crate::indicators::Ema,
+    ema_slow: crate::indicators::Ema,
     price_n: u64,
     price_mean: f64,
     price_m2: f64,
@@ -329,10 +329,10 @@ struct IndicatorState {
 }
 
 impl IndicatorState {
-    fn new() -> Self {
+    fn new(ema_fast_period: u32, ema_slow_period: u32) -> Self {
         Self {
-            ema_fast: 0.0,
-            ema_slow: 0.0,
+            ema_fast: crate::indicators::Ema::new(ema_fast_period as usize),
+            ema_slow: crate::indicators::Ema::new(ema_slow_period as usize),
             price_n: 0,
             price_mean: 0.0,
             price_m2: 0.0,
@@ -359,17 +359,9 @@ impl IndicatorState {
         }
     }
 
-    fn update(&mut self, price: f64, volume: f64, alpha_fast: f64, alpha_slow: f64) {
-        self.ema_fast = if self.ema_fast == 0.0 {
-            price
-        } else {
-            alpha_fast * price + (1.0 - alpha_fast) * self.ema_fast
-        };
-        self.ema_slow = if self.ema_slow == 0.0 {
-            price
-        } else {
-            alpha_slow * price + (1.0 - alpha_slow) * self.ema_slow
-        };
+    fn update(&mut self, price: f64, volume: f64) {
+        self.ema_fast.update(price);
+        self.ema_slow.update(price);
 
         self.price_n += 1;
         let pdelta = price - self.price_mean;
@@ -404,7 +396,7 @@ impl IndicatorState {
         } else {
             price
         };
-        let momentum = self.ema_fast - self.ema_slow;
+        let momentum = self.ema_fast.get() - self.ema_slow.get();
         let stretch = if vwap > 0.0 {
             (price - vwap) / vwap
         } else {
@@ -451,10 +443,12 @@ impl IndicatorState {
     }
 
     fn snapshot(&self) -> IndicatorSnapshot {
-        let momentum = self.ema_fast - self.ema_slow;
+        let ema_fast_val = self.ema_fast.get();
+        let ema_slow_val = self.ema_slow.get();
+        let momentum = ema_fast_val - ema_slow_val;
         IndicatorSnapshot {
-            ema_fast: self.ema_fast,
-            ema_slow: self.ema_slow,
+            ema_fast: ema_fast_val,
+            ema_slow: ema_slow_val,
             vwap: if self.sum_vol > 0.0 {
                 self.sum_px_vol / self.sum_vol
             } else {
@@ -515,13 +509,13 @@ impl MarketState {
             .entry(sym.clone())
             .or_insert_with(|| RingBuffer::new(self.cfg.window, zero));
         let _old = buf.push(candle);
+        let ema_fast_period = self.cfg.ema_fast;
+        let ema_slow_period = self.cfg.ema_slow;
         let ind = self
             .indicators
             .entry(sym)
-            .or_insert_with(IndicatorState::new);
-        let alpha_fast = 2.0 / (self.cfg.ema_fast as f64 + 1.0);
-        let alpha_slow = 2.0 / (self.cfg.ema_slow as f64 + 1.0);
-        ind.update(candle.c, candle.v, alpha_fast, alpha_slow);
+            .or_insert_with(|| IndicatorState::new(ema_fast_period, ema_slow_period));
+        ind.update(candle.c, candle.v);
     }
 
     pub fn view<'a>(&self, symbol: &'a str) -> MarketView<'a> {
@@ -1060,43 +1054,39 @@ mod tests {
 
     #[test]
     fn test_indicator_ema_initialization() {
-        let mut ind = IndicatorState::new();
-        let alpha_fast = 2.0 / 7.0; // ema_fast=6
-        let alpha_slow = 2.0 / 25.0; // ema_slow=24
+        let mut ind = IndicatorState::new(6, 24); // period 6 → alpha 2/7, period 24 → alpha 2/25
 
         // First update: EMAs should equal price
-        ind.update(100.0, 1000.0, alpha_fast, alpha_slow);
-        assert_eq!(ind.ema_fast, 100.0);
-        assert_eq!(ind.ema_slow, 100.0);
+        ind.update(100.0, 1000.0);
+        assert_eq!(ind.ema_fast.get(), 100.0);
+        assert_eq!(ind.ema_slow.get(), 100.0);
     }
 
     #[test]
     fn test_indicator_ema_convergence() {
-        let mut ind = IndicatorState::new();
-        let alpha_fast = 2.0 / 7.0;
-        let alpha_slow = 2.0 / 25.0;
+        let mut ind = IndicatorState::new(6, 24);
 
         // Initialize
-        ind.update(100.0, 1000.0, alpha_fast, alpha_slow);
+        ind.update(100.0, 1000.0);
 
         // Price rises to 110 for several bars
         for _ in 0..50 {
-            ind.update(110.0, 1000.0, alpha_fast, alpha_slow);
+            ind.update(110.0, 1000.0);
         }
 
         // Fast EMA should converge faster than slow
-        assert!((ind.ema_fast - 110.0).abs() < 0.1);
-        assert!((ind.ema_slow - 110.0).abs() < 0.5);
+        assert!((ind.ema_fast.get() - 110.0).abs() < 0.1);
+        assert!((ind.ema_slow.get() - 110.0).abs() < 0.5);
     }
 
     #[test]
     fn test_indicator_zscore_calculation() {
-        let mut ind = IndicatorState::new();
-        let alpha = 0.2;
+        // period=4 gives alpha ≈ 0.4 (close to old 0.2, same semantics)
+        let mut ind = IndicatorState::new(4, 4);
 
         // Feed stable data
         for _ in 0..100 {
-            ind.update(100.0, 1000.0, alpha, alpha);
+            ind.update(100.0, 1000.0);
         }
 
         let snapshot = ind.snapshot();
@@ -1107,12 +1097,12 @@ mod tests {
 
     #[test]
     fn test_indicator_vwap_calculation() {
-        let mut ind = IndicatorState::new();
+        let mut ind = IndicatorState::new(4, 9);
 
         // Volume-weighted: 100*1000 + 110*2000 = 320000, total vol = 3000
         // VWAP = 320000/3000 = 106.67
-        ind.update(100.0, 1000.0, 0.2, 0.1);
-        ind.update(110.0, 2000.0, 0.2, 0.1);
+        ind.update(100.0, 1000.0);
+        ind.update(110.0, 2000.0);
 
         let vwap = ind.sum_px_vol / ind.sum_vol;
         assert!((vwap - 106.666).abs() < 0.01);
